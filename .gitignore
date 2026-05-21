@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+.cache/
+
+# Ruff / mypy
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Home Assistant local test config
+.HA_VERSION
+.storage/
+
+# AI assistant artefacts (per global git policy)
+CLAUDE.md
+.claude/
+AGENTS.md

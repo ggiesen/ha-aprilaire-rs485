@@ -1,0 +1,117 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Aprilaire 8800 (RS-485)",
+        "description": "Connect to one or more Aprilaire Model 8800 thermostats via a local serial port (typically through an Aprilaire 8811 Protocol Adapter) or a TCP-to-RS-485 gateway.\n\nExamples for the Port field:\n- /dev/ttyUSB0 (local serial)\n- COM3 (Windows)\n- socket://192.168.1.50:8000 (TCP gateway, raw)\n- rfc2217://192.168.1.50:2217 (RFC 2217)",
+        "data": {
+          "port": "Port",
+          "baud": "Baud rate",
+          "max_address": "Maximum node address",
+          "addresses": "Explicit address list (optional)"
+        },
+        "data_description": {
+          "port": "Pyserial URL or local device path.",
+          "baud": "Thermostat bus baud rate. For TCP gateways this is unrelated to the TCP link.",
+          "max_address": "Set this to your actual node count (also set NETST on each thermostat to match).",
+          "addresses": "Comma-separated list of node addresses (1-64). Leave blank to auto-discover."
+        }
+      }
+    },
+    "error": {
+      "invalid_url": "Not a recognised pyserial URL or device path.",
+      "invalid_addresses": "Addresses must be a comma-separated list of integers between 1 and 64."
+    },
+    "abort": {
+      "already_configured": "This port is already configured."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "alarm_dehumidifier": {"name": "Dehumidifier alarm"},
+      "alarm_filter": {"name": "Air filter alarm"},
+      "alarm_system": {"name": "HVAC system alarm"},
+      "alarm_water_panel": {"name": "Water panel alarm"},
+      "bus_connectivity": {"name": "Bus connection"},
+      "error_any": {"name": "Sensor or comm error"},
+      "error_builtin_humidity": {"name": "Built-in humidity sensor error"},
+      "error_builtin_temp": {"name": "Built-in temperature sensor error"},
+      "error_comm": {"name": "Communication error"},
+      "error_eeprom": {"name": "EEPROM error"},
+      "error_outdoor_temp": {"name": "Outdoor temperature sensor error"},
+      "error_remote_temp": {"name": "Remote temperature sensor error"},
+      "network_override": {"name": "Network hold active"},
+      "progressive_recovery": {"name": "Progressive recovery"}
+    },
+    "humidifier": {
+      "dehumidifier": {"name": "Dehumidifier"},
+      "humidifier": {"name": "Humidifier"}
+    },
+    "sensor": {
+      "builtin_humidity": {"name": "Built-in humidity"},
+      "discovered_addresses": {"name": "Discovered addresses"},
+      "firmware_info": {"name": "Firmware"},
+      "hold_status": {"name": "Schedule hold status"},
+      "indoor_humidity": {"name": "Indoor humidity"},
+      "indoor_temperature": {"name": "Indoor temperature"},
+      "node_count": {"name": "Node count"},
+      "outdoor_humidity": {"name": "Outdoor humidity"},
+      "outdoor_temperature": {"name": "Outdoor temperature"},
+      "remote_temperature": {"name": "Remote temperature"},
+      "support_module_1_1": {"name": "Module 1 sensor 1"},
+      "support_module_1_2": {"name": "Module 1 sensor 2"},
+      "support_module_2_1": {"name": "Module 2 sensor 1"},
+      "support_module_2_2": {"name": "Module 2 sensor 2"},
+      "support_module_3_1": {"name": "Module 3 sensor 1"},
+      "support_module_3_2": {"name": "Module 3 sensor 2"},
+      "support_module_4_1": {"name": "Module 4 sensor 1"},
+      "support_module_4_2": {"name": "Module 4 sensor 2"}
+    },
+    "text": {
+      "permanent_message_1": {"name": "Permanent message 1"},
+      "permanent_message_2": {"name": "Permanent message 2"},
+      "permanent_message_3": {"name": "Permanent message 3"},
+      "permanent_message_4": {"name": "Permanent message 4"}
+    }
+  },
+  "services": {
+    "send_temporary_message": {
+      "name": "Send temporary message",
+      "description": "Display a transient message on the thermostat LCD. The message stays visible until cleared or until the thermostat loses power. ASCII only; non-ASCII characters are stripped. Maximum 32 characters.",
+      "fields": {
+        "message": {
+          "name": "Message",
+          "description": "Text to display."
+        }
+      }
+    },
+    "clear_temporary_message": {
+      "name": "Clear temporary message",
+      "description": "Remove any temporary message currently displayed on the thermostat LCD. Does not affect permanent message slots."
+    },
+    "set_permanent_message": {
+      "name": "Set permanent message",
+      "description": "Write text to one of the four permanent message slots. Permanent messages persist across power cycles. Which permanent slot is currently displayed is selected on the device itself.",
+      "fields": {
+        "slot": {
+          "name": "Slot",
+          "description": "Permanent message slot (1 through 4)."
+        },
+        "message": {
+          "name": "Message",
+          "description": "Text to store in the slot."
+        }
+      }
+    },
+    "clear_permanent_message": {
+      "name": "Clear permanent message",
+      "description": "Wipe one of the four permanent message slots.",
+      "fields": {
+        "slot": {
+          "name": "Slot",
+          "description": "Permanent message slot to clear (1 through 4)."
+        }
+      }
+    }
+  }
+}

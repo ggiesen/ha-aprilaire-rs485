@@ -1,0 +1,88 @@
+send_temporary_message:
+  name: Send temporary message
+  description: >-
+    Display a transient message on the thermostat LCD. The message stays
+    visible until cleared with clear_temporary_message or until the
+    thermostat loses power. Accepts ASCII characters only; non-ASCII is
+    stripped. Maximum 32 characters; longer text is truncated.
+  target:
+    entity:
+      integration: aprilaire_rs485
+    device:
+      integration: aprilaire_rs485
+  fields:
+    message:
+      name: Message
+      description: Text to display.
+      required: true
+      example: "Filter change due"
+      selector:
+        text:
+          multiline: false
+
+clear_temporary_message:
+  name: Clear temporary message
+  description: >-
+    Remove any temporary message currently displayed on the thermostat LCD.
+    Does not affect the four permanent message slots.
+  target:
+    entity:
+      integration: aprilaire_rs485
+    device:
+      integration: aprilaire_rs485
+
+set_permanent_message:
+  name: Set permanent message
+  description: >-
+    Write text to one of the four permanent message slots. Permanent
+    messages persist across power cycles (stored in the thermostat's
+    EEPROM). Which permanent slot is currently displayed is selected on
+    the device itself.
+  target:
+    entity:
+      integration: aprilaire_rs485
+    device:
+      integration: aprilaire_rs485
+  fields:
+    slot:
+      name: Slot
+      description: Permanent message slot (1 through 4).
+      required: true
+      default: 1
+      selector:
+        number:
+          min: 1
+          max: 4
+          step: 1
+          mode: box
+    message:
+      name: Message
+      description: Text to store in the slot.
+      required: true
+      example: "Service due 2026-06"
+      selector:
+        text:
+          multiline: false
+
+clear_permanent_message:
+  name: Clear permanent message
+  description: >-
+    Wipe one of the four permanent message slots. Other slots and the
+    temporary message are unaffected.
+  target:
+    entity:
+      integration: aprilaire_rs485
+    device:
+      integration: aprilaire_rs485
+  fields:
+    slot:
+      name: Slot
+      description: Permanent message slot to clear (1 through 4).
+      required: true
+      default: 1
+      selector:
+        number:
+          min: 1
+          max: 4
+          step: 1
+          mode: box

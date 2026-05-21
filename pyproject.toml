@@ -1,0 +1,112 @@
+# This project is a Home Assistant custom integration, not a standalone
+# Python package. HACS / Home Assistant load it as
+# ``custom_components.aprilaire_rs485``; there is no top-level package
+# directory matching the project name. The [project] block below exists
+# only so that ``pip install -e ".[dev]" / ".[test]" / ".[test-ha]"`` can
+# install our dev dependencies in one shot (CI uses this). The setuptools
+# backend is told explicitly to build no Python package - we just publish
+# metadata + dependency groups.
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+# No actual Python package is installed by ``pip install -e .``; the
+# project ships through HACS as a Home Assistant ``custom_components``
+# tree rather than via PyPI. An empty list disables setuptools'
+# package-auto-discovery (which would otherwise try to install
+# ``custom_components`` as a namespace package and fail).
+packages = []
+
+[project]
+name = "aprilaire_rs485"
+version = "0.1.0"
+description = "Home Assistant custom integration for the Aprilaire Model 8800 RS-485 communicating thermostat."
+readme = "README.md"
+license = { text = "MPL-2.0" }
+requires-python = ">=3.12"
+authors = [
+    { name = "Gary T. Giesen", email = "ggiesen@giesen.me" },
+]
+keywords = ["home-assistant", "hacs", "aprilaire", "rs485", "thermostat"]
+classifiers = [
+    "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Home Automation",
+]
+dependencies = [
+    "pyserial==3.5",
+]
+
+[project.optional-dependencies]
+# Protocol-only test runs need just pyserial + pytest.
+test = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+# Full HA-aware test runs additionally need the HA custom-component test
+# plugin (which pulls in homeassistant itself).
+test-ha = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-homeassistant-custom-component>=0.13",
+]
+dev = [
+    "ruff>=0.6",
+]
+
+[project.urls]
+Homepage = "https://gitlab.com/ggiesen/ha-aprilaire-rs485"
+Repository = "https://gitlab.com/ggiesen/ha-aprilaire-rs485"
+Mirror = "https://github.com/ggiesen/ha-aprilaire-rs485"
+Issues = "https://github.com/ggiesen/ha-aprilaire-rs485/issues"
+Changelog = "https://github.com/ggiesen/ha-aprilaire-rs485/blob/master/CHANGELOG.md"
+
+[tool.pytest.ini_options]
+# Auto-detect async test functions and fixtures. Required by the HA test
+# plugin (pytest-homeassistant-custom-component), which pulls in
+# pytest-asyncio but does not configure it. Without this, every async test
+# is skipped with a PytestUnhandledCoroutineWarning.
+asyncio_mode = "auto"
+# Future pytest-asyncio versions default fixture loop scope to function;
+# set it explicitly to silence the deprecation warning and match the
+# eventual default.
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [
+    "build",
+    "dist",
+]
+
+[tool.ruff.lint]
+# Keep the lint set close to what HA core uses so contributors who already
+# work on HA integrations don't get a surprise on submission.
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort
+    "B",   # bugbear
+    "UP",  # pyupgrade
+    "SIM", # simplify
+    "C4",  # comprehensions
+]
+ignore = [
+    "E501",  # line length handled by formatter
+    "B008",  # voluptuous schemas use function calls in defaults
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "B011",  # assert False used in tests
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["custom_components.aprilaire_rs485"]
