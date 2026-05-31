@@ -96,6 +96,8 @@ automatically after a drop, with a 5-second backoff.
 
 ## Installation
 
+Requires Home Assistant 2026.3 or newer.
+
 ### HACS
 
 1. In HACS, open **Integrations -> three-dot menu -> Custom repositories**.

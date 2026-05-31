@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-05-31
+
+### Changed
+
+- Raised the minimum supported Home Assistant version to 2026.3.0, matching the
+  bundled brand icon (which renders on 2026.3+) and the Home Assistant APIs the
+  integration relies on.
+
 ## [0.1.0] - 2026-05-31
 
 First public release.
@@ -113,5 +121,6 @@ First public release.
   (filtered to temperature sensors plus weather and climate entities) instead
   of a free-text entity_id field.
 
-[Unreleased]: https://github.com/ggiesen/ha-aprilaire-rs485/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/ggiesen/ha-aprilaire-rs485/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/ggiesen/ha-aprilaire-rs485/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/ggiesen/ha-aprilaire-rs485/releases/tag/v0.1.0
