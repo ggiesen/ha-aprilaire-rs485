@@ -8,8 +8,6 @@ send_temporary_message:
   target:
     entity:
       integration: aprilaire_rs485
-    device:
-      integration: aprilaire_rs485
   fields:
     message:
       name: Message
@@ -28,8 +26,6 @@ clear_temporary_message:
   target:
     entity:
       integration: aprilaire_rs485
-    device:
-      integration: aprilaire_rs485
 
 set_permanent_message:
   name: Set permanent message
@@ -40,8 +36,6 @@ set_permanent_message:
     the device itself.
   target:
     entity:
-      integration: aprilaire_rs485
-    device:
       integration: aprilaire_rs485
   fields:
     slot:
@@ -71,8 +65,6 @@ clear_permanent_message:
     temporary message are unaffected.
   target:
     entity:
-      integration: aprilaire_rs485
-    device:
       integration: aprilaire_rs485
   fields:
     slot:

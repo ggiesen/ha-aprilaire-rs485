@@ -38,6 +38,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `services.yaml` declared an unsupported `device:` filter under `target`,
+  which hassfest rejects. Removed it; the `entity` integration filter already
+  scopes the target picker and device/area targeting still works.
 - The built-in humidity (`BIHUM`) and direct-wired remote temperature (`RTS`)
   sensors were parsed but never queried, so they never reported a value. Both
   are now polled on startup and each refresh (they have no change-of-state
