@@ -38,6 +38,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Dropped a spurious "Event loop is closed" traceback that could be logged
+  when the RX thread had a message in flight as Home Assistant shut down or
+  reloaded the entry. The in-flight message is now discarded quietly during
+  teardown.
 - The bus sensors (node count, discovered addresses) and support-module
   sensor discovery dispatched `async_write_ha_state` / entity creation through
   bare `lambda`s, which Home Assistant runs on an executor thread - now a hard

@@ -658,7 +658,11 @@ class Aprilaire8800Coordinator:
 
     def _on_message_from_thread(self, msg: NodeMessage) -> None:
         """Bounce a message received on the RX thread onto the HA loop."""
-        self.hass.loop.call_soon_threadsafe(self._handle_message, msg)
+        # During shutdown/reload the loop may already be closed while the RX
+        # thread still has a message in flight; dropping it is fine (the
+        # instance is going away) and avoids an "Event loop is closed" trace.
+        with contextlib.suppress(RuntimeError):
+            self.hass.loop.call_soon_threadsafe(self._handle_message, msg)
 
     @callback
     def _handle_message(self, msg: NodeMessage) -> None:
