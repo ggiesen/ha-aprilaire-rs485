@@ -577,11 +577,16 @@ def decode_hvac(value: str) -> dict[str, bool]:
 def decode_errors(value: str) -> dict[str, int]:
     """Decode the six-digit ERROR response into named flags.
 
-    Returns an empty dict if the input is too short or empty.
+    Returns an empty dict for empty input or anything whose first six
+    characters aren't all digits - e.g. a framing glitch that merged two
+    responses into one line. Such corrupt lines are dropped rather than
+    raising.
     """
-    if not value or len(value.strip()) < 6:
+    if not value:
         return {}
     s = value.strip()
+    if len(s) < 6 or not s[:6].isdigit():
+        return {}
     return {
         "builtin_temp": int(s[0]),
         "remote_temp": int(s[1]),

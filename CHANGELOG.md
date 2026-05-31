@@ -38,6 +38,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `decode_errors` no longer raises on a malformed `ERROR` response (e.g. two
+  bus responses merged into one line when a `CR` delimiter is lost on the
+  wire). Lines whose first six characters aren't all digits are dropped
+  silently, consistent with how the other decoders handle corrupt input.
 - Dropped a spurious "Event loop is closed" traceback that could be logged
   when the RX thread had a message in flight as Home Assistant shut down or
   reloaded the entry. The in-flight message is now discarded quietly during

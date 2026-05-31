@@ -209,6 +209,13 @@ def test_decode_errors_too_short_returns_empty() -> None:
     assert decode_errors("") == {}
 
 
+def test_decode_errors_non_digit_returns_empty() -> None:
+    """A framing-merged line (non-digit in the first six chars) is dropped, not raised."""
+    # Two responses merged when a CR delimiter was lost on the bus.
+    assert decode_errors("00000SN1 RECOVSTAT=OFF") == {}
+    assert decode_errors("0000XX") == {}
+
+
 # ---------- encoder ----------
 
 
