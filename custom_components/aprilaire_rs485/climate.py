@@ -38,6 +38,14 @@ from .const import (
     MODE_EMHT,
     MODE_HEAT,
     MODE_OFF,
+    SETPOINT_COOL_MAX_C,
+    SETPOINT_COOL_MAX_F,
+    SETPOINT_COOL_MIN_C,
+    SETPOINT_COOL_MIN_F,
+    SETPOINT_HEAT_MAX_C,
+    SETPOINT_HEAT_MAX_F,
+    SETPOINT_HEAT_MIN_C,
+    SETPOINT_HEAT_MIN_F,
     SIGNAL_NODE_DISCOVERED,
     SIGNAL_NODE_UPDATED,
 )
@@ -126,6 +134,7 @@ class Aprilaire8800Climate(ClimateEntity):
     ]
     _attr_name = None  # Use the device name.
     _attr_should_poll = False
+    _attr_target_temperature_step = 1  # Device setpoints are whole degrees (F or C).
 
     def __init__(self, coordinator: Aprilaire8800Coordinator, address: int) -> None:
         """Initialise the climate entity."""
@@ -142,6 +151,34 @@ class Aprilaire8800Climate(ClimateEntity):
     def available(self) -> bool:
         """Return whether the underlying node has been seen."""
         return self._node is not None
+
+    @property
+    def min_temp(self) -> float:
+        """Lower bound for the active control, per the device setpoint ranges.
+
+        HA uses one min/max for both the single setpoint and the range
+        handles, so in heat_cool we expose the heat-setpoint floor (the low
+        handle); single cool mode uses the cool floor. The device ignores
+        out-of-range writes regardless, so this is a UX bound, not a guard.
+        """
+        celsius = self.temperature_unit == UnitOfTemperature.CELSIUS
+        node = self._node
+        if node and node.mode == MODE_COOL:
+            return SETPOINT_COOL_MIN_C if celsius else SETPOINT_COOL_MIN_F
+        return SETPOINT_HEAT_MIN_C if celsius else SETPOINT_HEAT_MIN_F
+
+    @property
+    def max_temp(self) -> float:
+        """Upper bound for the active control, per the device setpoint ranges.
+
+        In heat_cool this is the cool-setpoint ceiling (the high handle);
+        single heat/emergency-heat modes use the heat ceiling.
+        """
+        celsius = self.temperature_unit == UnitOfTemperature.CELSIUS
+        node = self._node
+        if node and node.mode in (MODE_HEAT, MODE_EMHT):
+            return SETPOINT_HEAT_MAX_C if celsius else SETPOINT_HEAT_MAX_F
+        return SETPOINT_COOL_MAX_C if celsius else SETPOINT_COOL_MAX_F
 
     @property
     def supported_features(self) -> ClimateEntityFeature:
@@ -275,6 +312,12 @@ class Aprilaire8800Climate(ClimateEntity):
         }
         if node.mode == MODE_EMHT:
             attrs["emergency_heat"] = True
+        if node.deadband is not None:
+            # Minimum gap the device enforces between heat and cool setpoints
+            # in auto. HA has no way to enforce this in the slider, so it is
+            # surfaced for visibility only; the device corrects violations and
+            # reports the adjusted setpoints back via COS.
+            attrs["auto_deadband"] = node.deadband
         if node.errors:
             attrs["errors"] = node.errors
         return attrs

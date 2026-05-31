@@ -185,6 +185,20 @@ def test_controller_type_bad_value_does_not_raise() -> None:
     assert node.controller_type is None
 
 
+def test_deadband_parsed_with_scale() -> None:
+    """A DBAND response like '3F' stores the magnitude as an int."""
+    node = NodeState(address=1)
+    apply_to_state(node, "DBAND", "3F")
+    assert node.deadband == 3
+
+
+def test_deadband_parsed_without_scale() -> None:
+    """A bare DBAND value (no scale suffix) parses too."""
+    node = NodeState(address=1)
+    apply_to_state(node, "DBAND", "2")
+    assert node.deadband == 2
+
+
 # ---------- relay state for hvac_action ----------
 
 

@@ -70,6 +70,18 @@ FAN_AUTO = "AUTO"
 FAN_CIRC = "CIRC"
 FAN_ON = "ON"
 
+# Setpoint ranges accepted by the device, used to bound the climate entity's
+# controls per mode (manual pp.38, 40 for SH/SC). The device silently ignores
+# out-of-range writes, so these are a UX nicety, not a safety boundary.
+SETPOINT_HEAT_MIN_F = 40
+SETPOINT_HEAT_MAX_F = 90
+SETPOINT_COOL_MIN_F = 42
+SETPOINT_COOL_MAX_F = 99
+SETPOINT_HEAT_MIN_C = 4
+SETPOINT_HEAT_MAX_C = 32
+SETPOINT_COOL_MIN_C = 6
+SETPOINT_COOL_MAX_C = 37
+
 # Dispatcher signal templates.
 SIGNAL_NODE_DISCOVERED = "aprilaire_rs485_node_discovered"
 SIGNAL_NODE_UPDATED = "aprilaire_rs485_node_updated_{address}"

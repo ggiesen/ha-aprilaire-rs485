@@ -99,6 +99,12 @@ class NodeState:
     setpoint_humid: int | None = None
     setpoint_dehum: int | None = None
 
+    # Auto-mode deadband in degrees of the current scale (DBAND, manual p.12).
+    # Thermostat only - humidistats ignore the query, so this stays None for
+    # them. Read at startup; the device changes it only via installer setup
+    # (COS:N/A), so we don't poll it on the periodic refresh.
+    deadband: int | None = None
+
     # Modes
     mode: str | None = None
     fan_mode: str | None = None
@@ -319,6 +325,7 @@ class Aprilaire8800Coordinator:
         await self._async_query(addr, "HUM")
         await self._async_query(addr, "SH")
         await self._async_query(addr, "SC")
+        await self._async_query(addr, "DBAND")
         await self._async_query(addr, "SHUM")
         await self._async_query(addr, "SDEH")
         await self._async_query(addr, "OT")
@@ -651,6 +658,11 @@ class Aprilaire8800Coordinator:
         elif cmd == "SC":
             t, _ = decode_temperature(val)
             node.setpoint_cool = t
+        elif cmd == "DBAND":
+            # Response is "[value][scale]" e.g. "3F"; we keep the magnitude.
+            t, _ = decode_temperature(val)
+            if t is not None:
+                node.deadband = int(t)
         elif cmd == "SHUM":
             node.setpoint_humid = decode_humidity(val)
         elif cmd == "SDEH":

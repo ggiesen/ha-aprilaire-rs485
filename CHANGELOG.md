@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- The climate entity exposes the auto-mode deadband (the device `DBAND`
+  setting) as an `auto_deadband` attribute. Home Assistant has no way to
+  enforce a minimum gap in the setpoint slider, so this is for visibility; the
+  device itself corrects deadband violations and reports the adjusted
+  setpoints back.
+
 ### Fixed
 
 - Climate and humidifier entities were never created on a running system. The
@@ -29,6 +37,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   in auto) instead of both at once, so the frontend no longer shows a
   dual-setpoint range control in single-setpoint modes. It also declares
   `TURN_ON` and `TURN_OFF`.
+- The climate entity's min/max setpoint bounds now follow the device's
+  documented ranges per mode (heat 40-90F/4-32C, cool 42-99F/6-37C) instead of
+  Home Assistant's generic defaults, and the setpoint step is set to 1 degree.
 
 ## [0.1.0] - 2026-05-20
 
