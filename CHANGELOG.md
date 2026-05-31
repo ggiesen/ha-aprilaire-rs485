@@ -13,6 +13,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   enforce a minimum gap in the setpoint slider, so this is for visibility; the
   device itself corrects deadband violations and reports the adjusted
   setpoints back.
+- An options flow to change the outdoor temperature source and rebroadcast
+  toggle after initial setup (Settings -> Devices & services -> the entry ->
+  Configure). Saving reloads the integration so the change takes effect.
 
 ### Fixed
 

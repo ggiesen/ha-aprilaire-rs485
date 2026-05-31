@@ -30,11 +30,14 @@ pytest.importorskip("homeassistant")
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.aprilaire_rs485.const import (
     CONF_ADDRESSES,
     CONF_BAUD,
     CONF_MAX_ADDRESS,
+    CONF_OUTDOOR_TEMP_REBROADCAST,
+    CONF_OUTDOOR_TEMP_SOURCE,
     CONF_PORT,
     DOMAIN,
 )
@@ -150,3 +153,55 @@ async def test_user_flow_prevents_duplicate_port(hass: HomeAssistant) -> None:
     )
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "already_configured"
+
+
+async def test_options_flow_sets_outdoor_temp_source(hass: HomeAssistant) -> None:
+    """The options flow writes the chosen source and rebroadcast to entry.options."""
+    hass.states.async_set(
+        "sensor.outdoor",
+        "12",
+        {"device_class": "temperature", "unit_of_measurement": "°C"},
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_PORT: "loop://",
+            CONF_OUTDOOR_TEMP_SOURCE: "",
+            CONF_OUTDOOR_TEMP_REBROADCAST: True,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "init"
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            CONF_OUTDOOR_TEMP_SOURCE: "sensor.outdoor",
+            CONF_OUTDOOR_TEMP_REBROADCAST: False,
+        },
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options[CONF_OUTDOOR_TEMP_SOURCE] == "sensor.outdoor"
+    assert entry.options[CONF_OUTDOOR_TEMP_REBROADCAST] is False
+
+
+async def test_options_flow_clears_outdoor_temp_source(hass: HomeAssistant) -> None:
+    """Omitting the source clears it (empty string), leaving rebroadcast as the fallback."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_PORT: "loop://"},
+        options={CONF_OUTDOOR_TEMP_SOURCE: "sensor.old", CONF_OUTDOOR_TEMP_REBROADCAST: False},
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={CONF_OUTDOOR_TEMP_REBROADCAST: True},
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options[CONF_OUTDOOR_TEMP_SOURCE] == ""
+    assert entry.options[CONF_OUTDOOR_TEMP_REBROADCAST] is True

@@ -40,15 +40,19 @@ PLATFORMS: list[Platform] = [
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Aprilaire 8800 from a config entry."""
-    url = entry.data[CONF_PORT]
-    baud = entry.data.get(CONF_BAUD, DEFAULT_BAUD)
-    max_address = entry.data.get(CONF_MAX_ADDRESS, DEFAULT_MAX_ADDRESS)
-    explicit = entry.data.get(CONF_ADDRESSES) or None
-    ot_source = entry.data.get(CONF_OUTDOOR_TEMP_SOURCE) or None
+    # Options (edited via the options flow) override the values captured at
+    # initial setup. Only the outdoor-temperature settings are editable there;
+    # the rest come from entry.data.
+    config = {**entry.data, **entry.options}
+    url = config[CONF_PORT]
+    baud = config.get(CONF_BAUD, DEFAULT_BAUD)
+    max_address = config.get(CONF_MAX_ADDRESS, DEFAULT_MAX_ADDRESS)
+    explicit = config.get(CONF_ADDRESSES) or None
+    ot_source = config.get(CONF_OUTDOOR_TEMP_SOURCE) or None
     # Default True so existing config entries without the key still get
     # rebroadcast behaviour (the lowest-addressed sensor-equipped node
     # populates OT on its peers).
-    ot_rebroadcast = entry.data.get(CONF_OUTDOOR_TEMP_REBROADCAST, True)
+    ot_rebroadcast = config.get(CONF_OUTDOOR_TEMP_REBROADCAST, True)
 
     coordinator = Aprilaire8800Coordinator(
         hass=hass,
@@ -81,7 +85,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Services live at the integration level and are shared across config
     # entries. Register on first setup; unregister when the last entry unloads.
     async_register_services(hass)
+
+    # Reload the entry when its options change so the coordinator restarts with
+    # the new outdoor-temperature settings.
+    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True
+
+
+async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload the config entry after its options are updated."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

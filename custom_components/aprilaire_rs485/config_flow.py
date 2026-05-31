@@ -9,7 +9,13 @@ from __future__ import annotations
 from typing import Any
 
 import voluptuous as vol
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
+from homeassistant.core import callback
 from homeassistant.helpers import selector
 
 from .const import (
@@ -55,6 +61,24 @@ def _looks_like_valid_url(value: str) -> bool:
     return any(value.startswith(prefix) for prefix in _VALID_URL_PREFIXES)
 
 
+def _outdoor_temp_source_selector() -> selector.EntitySelector:
+    """Entity picker for the outdoor temperature source.
+
+    Filtered to the domains the coordinator can actually read: temperature
+    sensors (numeric state) plus weather/climate entities (read from their
+    ``temperature`` / ``current_temperature`` attribute). Shared by the config
+    flow and the options flow.
+    """
+    return selector.EntitySelector(
+        selector.EntitySelectorConfig(
+            filter=[
+                selector.EntityFilterSelectorConfig(domain="sensor", device_class="temperature"),
+                selector.EntityFilterSelectorConfig(domain=["weather", "climate"]),
+            ]
+        )
+    )
+
+
 DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_PORT, default="/dev/ttyUSB0"): str,
@@ -69,16 +93,7 @@ DATA_SCHEMA = vol.Schema(
         # from its temperature / current_temperature attribute). Omitted means
         # "no HA source". Picker filters to those domains so the user can't
         # choose an entity the coordinator can't read.
-        vol.Optional(CONF_OUTDOOR_TEMP_SOURCE): selector.EntitySelector(
-            selector.EntitySelectorConfig(
-                filter=[
-                    selector.EntityFilterSelectorConfig(
-                        domain="sensor", device_class="temperature"
-                    ),
-                    selector.EntityFilterSelectorConfig(domain=["weather", "climate"]),
-                ]
-            )
-        ),
+        vol.Optional(CONF_OUTDOOR_TEMP_SOURCE): _outdoor_temp_source_selector(),
         # If true, when no HA source is configured the integration rebroadcasts
         # outdoor temperature from the lowest-addressed thermostat that has its
         # own sensor to peers that don't. Defaults to true so the typical
@@ -93,6 +108,12 @@ class Aprilaire8800ConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Aprilaire 8800 (RS-485)."""
 
     VERSION = 1
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+        """Return the options flow for editing runtime-tunable settings."""
+        return Aprilaire8800OptionsFlow()
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle the initial user step."""
@@ -141,4 +162,45 @@ class Aprilaire8800ConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=DATA_SCHEMA,
             errors=errors,
+        )
+
+
+class Aprilaire8800OptionsFlow(OptionsFlow):
+    """Edit runtime-tunable settings after initial setup.
+
+    Only the outdoor-temperature source and rebroadcast toggle are editable
+    here; the transport (port/baud/addresses) is fixed at setup time. Saving
+    triggers a reload of the config entry (registered in ``__init__``) so the
+    coordinator restarts with the new settings.
+    """
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Handle the options step."""
+        if user_input is not None:
+            source = (user_input.get(CONF_OUTDOOR_TEMP_SOURCE) or "").strip()
+            return self.async_create_entry(
+                data={
+                    CONF_OUTDOOR_TEMP_SOURCE: source,
+                    CONF_OUTDOOR_TEMP_REBROADCAST: bool(
+                        user_input.get(CONF_OUTDOOR_TEMP_REBROADCAST, True)
+                    ),
+                }
+            )
+
+        # Pre-fill with the effective current values (options override data).
+        current = {**self.config_entry.data, **self.config_entry.options}
+        schema = vol.Schema(
+            {
+                vol.Optional(CONF_OUTDOOR_TEMP_SOURCE): _outdoor_temp_source_selector(),
+                vol.Optional(CONF_OUTDOOR_TEMP_REBROADCAST, default=True): bool,
+            }
+        )
+        suggested: dict[str, Any] = {
+            CONF_OUTDOOR_TEMP_REBROADCAST: current.get(CONF_OUTDOOR_TEMP_REBROADCAST, True),
+        }
+        if current.get(CONF_OUTDOOR_TEMP_SOURCE):
+            suggested[CONF_OUTDOOR_TEMP_SOURCE] = current[CONF_OUTDOOR_TEMP_SOURCE]
+        return self.async_show_form(
+            step_id="init",
+            data_schema=self.add_suggested_values_to_schema(schema, suggested),
         )

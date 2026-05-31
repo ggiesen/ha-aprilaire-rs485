@@ -8,13 +8,17 @@
           "port": "Port",
           "baud": "Baud rate",
           "max_address": "Maximum node address",
-          "addresses": "Explicit address list (optional)"
+          "addresses": "Explicit address list (optional)",
+          "outdoor_temp_source": "Outdoor temperature source (optional)",
+          "outdoor_temp_rebroadcast": "Rebroadcast outdoor temperature from a sensor-equipped thermostat"
         },
         "data_description": {
           "port": "Pyserial URL or local device path.",
           "baud": "Thermostat bus baud rate. For TCP gateways this is unrelated to the TCP link.",
           "max_address": "Set this to your actual node count (also set NETST on each thermostat to match).",
-          "addresses": "Comma-separated list of node addresses (1-64). Leave blank to auto-discover."
+          "addresses": "Comma-separated list of node addresses (1-64). Leave blank to auto-discover.",
+          "outdoor_temp_source": "A temperature sensor, or a weather/climate entity. Its value is pushed to thermostats that lack their own outdoor sensor.",
+          "outdoor_temp_rebroadcast": "When no source is set, share the outdoor reading from the lowest-addressed thermostat that has its own sensor."
         }
       }
     },
@@ -24,6 +28,21 @@
     },
     "abort": {
       "already_configured": "This port is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Outdoor temperature",
+        "data": {
+          "outdoor_temp_source": "Outdoor temperature source (optional)",
+          "outdoor_temp_rebroadcast": "Rebroadcast outdoor temperature from a sensor-equipped thermostat"
+        },
+        "data_description": {
+          "outdoor_temp_source": "A temperature sensor, or a weather/climate entity. Its value is pushed to thermostats that lack their own outdoor sensor. Clear it to fall back to rebroadcast.",
+          "outdoor_temp_rebroadcast": "When no source is set, share the outdoor reading from the lowest-addressed thermostat that has its own sensor."
+        }
+      }
     }
   },
   "entity": {
