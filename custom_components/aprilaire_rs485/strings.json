@@ -62,6 +62,12 @@
       "network_override": {"name": "Network hold active"},
       "progressive_recovery": {"name": "Progressive recovery"}
     },
+    "button": {
+      "clear_alarm_filter": {"name": "Clear air filter alarm"},
+      "clear_alarm_water_panel": {"name": "Clear water panel alarm"},
+      "clear_alarm_dehumidifier": {"name": "Clear dehumidifier alarm"},
+      "clear_alarm_system": {"name": "Clear HVAC system alarm"}
+    },
     "humidifier": {
       "dehumidifier": {"name": "Dehumidifier"},
       "humidifier": {"name": "Humidifier"}

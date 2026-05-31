@@ -20,6 +20,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Aprilaire artwork in the UI with no `home-assistant/brands` submission.
   Requires HA 2026.3+ (local brand images); on older HA the icon is absent
   unless the assets are also submitted to the brands repo.
+- A `button` per node to clear each maintenance alarm (air filter, water
+  panel, dehumidifier, HVAC system), sending `[alarm]ALM=OFF`. The alarm
+  states remain as problem `binary_sensor` entities; the buttons are the
+  clear/acknowledge action, previously only possible at the thermostat.
 
 ### Fixed
 
