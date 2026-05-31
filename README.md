@@ -382,11 +382,14 @@ their own sensor accept the value and display it. The validity period is
 Two configuration options govern this:
 
 - **Outdoor temperature source** (`outdoor_temp_source`, optional, set in
-  the config flow): the entity_id of any HA temperature sensor (e.g.
-  `sensor.openweather_temperature`, `weather.home`, or a Zigbee sensor on
-  your deck). When set, the integration reads this entity every 5
-  minutes, converts to integer degrees in the unit it reports, and
-  broadcasts globally.
+  the config flow via an entity picker): a temperature `sensor` (e.g.
+  `sensor.openweather_temperature` or a Zigbee sensor on your deck), a
+  `weather` entity (e.g. `weather.home`), or a `climate` entity. When set,
+  the integration reads this entity every 5 minutes and broadcasts it
+  globally as integer degrees. The value is taken from the sensor's numeric
+  state, the weather entity's `temperature` attribute, or the climate
+  entity's `current_temperature` attribute, respectively; the unit follows
+  the entity (or the HA system unit for `climate`).
 
 - **Rebroadcast** (`outdoor_temp_rebroadcast`, default true): if no HA
   source is configured, the integration looks for the lowest-addressed

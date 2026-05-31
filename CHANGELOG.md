@@ -29,6 +29,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   before that device existed, which logged a deprecation warning and would
   break in Home Assistant 2025.12. The bus device is now registered during
   setup before any node entity references it.
+- `weather` and `climate` entities now work as the outdoor temperature
+  source. Previously the reader only parsed an entity's numeric state, so the
+  `weather.home` example in the docs silently failed; it now reads the
+  `temperature` / `current_temperature` attribute for those domains.
 
 ### Changed
 
@@ -40,6 +44,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The climate entity's min/max setpoint bounds now follow the device's
   documented ranges per mode (heat 40-90F/4-32C, cool 42-99F/6-37C) instead of
   Home Assistant's generic defaults, and the setpoint step is set to 1 degree.
+- The outdoor temperature source is now chosen with an entity picker
+  (filtered to temperature sensors plus weather and climate entities) instead
+  of a free-text entity_id field.
 
 ## [0.1.0] - 2026-05-20
 

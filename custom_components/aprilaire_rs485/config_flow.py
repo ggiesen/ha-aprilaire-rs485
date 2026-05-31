@@ -10,6 +10,7 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.helpers import selector
 
 from .const import (
     CONF_ADDRESSES,
@@ -63,8 +64,21 @@ DATA_SCHEMA = vol.Schema(
         ),
         # Comma-separated address list, e.g. "1,2,5". Empty -> discover.
         vol.Optional(CONF_ADDRESSES, default=""): str,
-        # entity_id of an HA temperature sensor. Empty means "no HA source".
-        vol.Optional(CONF_OUTDOOR_TEMP_SOURCE, default=""): str,
+        # Outdoor temperature source entity. A temperature sensor (value read
+        # from its numeric state), or a weather/climate entity (value read
+        # from its temperature / current_temperature attribute). Omitted means
+        # "no HA source". Picker filters to those domains so the user can't
+        # choose an entity the coordinator can't read.
+        vol.Optional(CONF_OUTDOOR_TEMP_SOURCE): selector.EntitySelector(
+            selector.EntitySelectorConfig(
+                filter=[
+                    selector.EntityFilterSelectorConfig(
+                        domain="sensor", device_class="temperature"
+                    ),
+                    selector.EntityFilterSelectorConfig(domain=["weather", "climate"]),
+                ]
+            )
+        ),
         # If true, when no HA source is configured the integration rebroadcasts
         # outdoor temperature from the lowest-addressed thermostat that has its
         # own sensor to peers that don't. Defaults to true so the typical

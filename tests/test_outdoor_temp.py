@@ -195,9 +195,13 @@ def coord_factory():
     )
 
     class _FakeState:
-        def __init__(self, state: str, unit: str | None = None) -> None:
+        def __init__(
+            self, state: str, unit: str | None = None, attributes: dict | None = None
+        ) -> None:
             self.state = state
-            self.attributes = {"unit_of_measurement": unit} if unit else {}
+            self.attributes = dict(attributes) if attributes else {}
+            if unit:
+                self.attributes.setdefault("unit_of_measurement", unit)
 
     class _FakeStates:
         def __init__(self, store: dict) -> None:
@@ -206,14 +210,27 @@ def coord_factory():
         def get(self, entity_id):
             return self._store.get(entity_id)
 
-    class _FakeHass:
-        def __init__(self, states: dict) -> None:
-            self.states = _FakeStates(states)
+    class _FakeUnitSystem:
+        def __init__(self, temperature_unit: str) -> None:
+            self.temperature_unit = temperature_unit
 
-    def _make(hass_states, nodes, source=None, rebroadcast=True):
+    class _FakeConfig:
+        def __init__(self, temperature_unit: str) -> None:
+            self.units = _FakeUnitSystem(temperature_unit)
+
+    class _FakeHass:
+        def __init__(self, states: dict, system_temperature_unit: str = "°F") -> None:
+            self.states = _FakeStates(states)
+            self.config = _FakeConfig(system_temperature_unit)
+
+    def _make(hass_states, nodes, source=None, rebroadcast=True, system_temperature_unit="°F"):
         coord = Aprilaire8800Coordinator.__new__(Aprilaire8800Coordinator)
         coord.hass = _FakeHass(
-            {k: _FakeState(v[0], v[1] if len(v) > 1 else None) for k, v in hass_states.items()}
+            {
+                k: _FakeState(v[0], v[1] if len(v) > 1 else None, v[2] if len(v) > 2 else None)
+                for k, v in hass_states.items()
+            },
+            system_temperature_unit=system_temperature_unit,
         )
         coord._ot_source = source
         coord._ot_rebroadcast = rebroadcast
@@ -274,6 +291,33 @@ def test_resolve_skips_non_numeric_ha_source(coord_factory) -> None:
         rebroadcast=False,
     )
     assert coord._resolve_outdoor_temp_value() is None
+
+
+def test_resolve_weather_entity_uses_temperature_attribute(coord_factory) -> None:
+    """A weather entity's state is a condition; the value comes from its
+    temperature attribute, with the scale from temperature_unit."""
+    coord = coord_factory(
+        hass_states={
+            "weather.home": ("partlycloudy", None, {"temperature": 12.4, "temperature_unit": "°C"})
+        },
+        nodes={},
+        source="weather.home",
+        rebroadcast=False,
+    )
+    assert coord._resolve_outdoor_temp_value() == (12, "C")
+
+
+def test_resolve_climate_entity_uses_current_temperature_and_system_unit(coord_factory) -> None:
+    """A climate entity's value comes from current_temperature; with no unit
+    attribute the scale falls back to the HA system unit."""
+    coord = coord_factory(
+        hass_states={"climate.den": ("heat", None, {"current_temperature": 68.0})},
+        nodes={},
+        source="climate.den",
+        rebroadcast=False,
+        system_temperature_unit="°F",
+    )
+    assert coord._resolve_outdoor_temp_value() == (68, "F")
 
 
 def test_resolve_missing_ha_entity_falls_back(coord_factory) -> None:

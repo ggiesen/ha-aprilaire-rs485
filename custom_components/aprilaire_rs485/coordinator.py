@@ -451,25 +451,42 @@ class Aprilaire8800Coordinator:
         return None
 
     def _read_ha_temperature(self, entity_id: str) -> tuple[int, str] | None:
-        """Read an HA temperature entity, return ``(int, scale)`` or None."""
+        """Read an HA temperature entity, return ``(int, scale)`` or None.
+
+        The numeric value lives in a different place per domain: ``sensor``
+        and ``number`` carry it in the state itself, ``weather`` in its
+        ``temperature`` attribute, and ``climate`` in its
+        ``current_temperature`` attribute.
+        """
         state = self.hass.states.get(entity_id)
         if state is None:
             return None
         if state.state in ("unknown", "unavailable", None, ""):
             return None
+        attrs = state.attributes or {}
+        domain = entity_id.split(".", 1)[0]
+        if domain == "weather":
+            raw = attrs.get("temperature")
+        elif domain == "climate":
+            raw = attrs.get("current_temperature")
+        else:
+            raw = state.state
         try:
-            value = float(state.state)
+            value = float(raw)
         except (TypeError, ValueError):
             _LOGGER.warning(
-                "OT source %s has non-numeric state %r; skipping",
+                "OT source %s has no usable numeric temperature (%r); skipping",
                 entity_id,
-                state.state,
+                raw,
             )
             return None
-        unit = (state.attributes or {}).get("unit_of_measurement", "")
-        # Tolerant of "°F" or "°C" / "F" / "C" / etc; default to Fahrenheit
-        # if the unit is missing or unrecognised since the 8800 ships in
-        # F in North America.
+        # Unit: sensors/numbers expose unit_of_measurement; weather exposes
+        # temperature_unit; climate exposes neither, so fall back to the HA
+        # system unit. Tolerant of "°F"/"°C"/"F"/"C"; default to Fahrenheit
+        # since the 8800 ships in F in North America.
+        unit = attrs.get("unit_of_measurement") or attrs.get("temperature_unit") or ""
+        if not unit:
+            unit = self.hass.config.units.temperature_unit
         scale = "C" if "C" in unit and "F" not in unit else "F"
         return self._clamp_outdoor(round(value), scale)
 
