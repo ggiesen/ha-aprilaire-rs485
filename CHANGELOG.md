@@ -38,6 +38,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- The built-in humidity (`BIHUM`) and direct-wired remote temperature (`RTS`)
+  sensors were parsed but never queried, so they never reported a value. Both
+  are now polled on startup and each refresh (they have no change-of-state
+  push); on thermostats this makes the built-in humidity reading work.
 - `decode_errors` no longer raises on a malformed `ERROR` response (e.g. two
   bus responses merged into one line when a `CR` delimiter is lost on the
   wire). Lines whose first six characters aren't all digits are dropped

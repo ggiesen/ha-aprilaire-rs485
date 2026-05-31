@@ -209,6 +209,15 @@ def test_alarm_periods_parsed() -> None:
     assert node.alarm_periods == {"FLT": "6", "WP": "12", "DEH": "OFF", "SYS": "OFF"}
 
 
+def test_builtin_humidity_and_remote_temp_parsed() -> None:
+    """BIHUM and RTS responses populate their NodeState fields (both are polled)."""
+    node = NodeState(address=1)
+    apply_to_state(node, "BIHUM", "42%")
+    assert node.builtin_humidity == 42
+    apply_to_state(node, "RTS", "68F")
+    assert node.remote_temperature == 68.0
+
+
 # ---------- relay state for hvac_action ----------
 
 
