@@ -208,7 +208,8 @@ class Aprilaire8800Coordinator:
         # When true, push HA's local wall-clock time/date to the bus on a
         # periodic cadence. We never touch the device's DLS setting - it owns
         # DST and our re-push keeps the wall time aligned across transitions
-        # and after a thermostat power loss.
+        # and restores the clock after it is lost (backup batteries depleted or
+        # removed; ordinary system power loss is held by the batteries).
         self._clock_sync = bool(clock_sync)
 
     def device_info(self, address: int) -> DeviceInfo:
@@ -268,7 +269,8 @@ class Aprilaire8800Coordinator:
         # Clock sync: push wall-clock time now and on a periodic cadence. The
         # re-push corrects drift, realigns across DST transitions (the device's
         # DLS does the jump; we reassert the truth), and recovers the clock
-        # after a thermostat power loss within one interval.
+        # within one interval after it is lost (backup batteries depleted or
+        # removed; ordinary system power loss is held by the batteries).
         if self._clock_sync:
             await self._async_push_clock()
             self._clock_unsub = async_track_time_interval(

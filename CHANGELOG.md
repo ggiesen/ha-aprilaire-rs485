@@ -11,6 +11,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The manifest `issue_tracker` now points to the GitLab issues page, where
   development and triage happen. New-issue creation from GitHub is funneled to
   GitLab as well.
+- Corrected the clock-sync documentation: the thermostat's clock is backed by
+  batteries and rides out ordinary system power loss, so it is lost only when
+  those batteries are depleted or removed -- not on every power interruption as
+  the notes previously implied.
 
 ## [0.1.1] - 2026-05-31
 
@@ -58,7 +62,9 @@ First public release.
   clear/acknowledge action, previously only possible at the thermostat.
 - Optional clock sync: when enabled (default), the integration pushes Home
   Assistant's local wall-clock time and date to the bus on startup and hourly,
-  keeping the thermostat clocks correct (they drift and reset on power loss).
+  keeping the thermostat clocks correct (the RTC drifts slowly, and the clock
+  is lost only when the backup batteries are depleted or removed -- the
+  batteries hold it through ordinary system power loss).
   The thermostat's own DST (`DLS`) setting is left untouched -- the device
   keeps owning DST and the periodic re-push realigns the wall time across
   transitions. Toggle in the config and options flows.

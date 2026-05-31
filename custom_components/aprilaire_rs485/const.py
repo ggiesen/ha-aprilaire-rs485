@@ -37,8 +37,9 @@ DEFAULT_CLOCK_SYNC = True
 # validity window. Broadcast at half that, comfortably ahead of expiry.
 OUTDOOR_TEMP_BROADCAST_INTERVAL_S = 300
 # Clock push cadence. The device RTC drifts ~1 min/30 days, so this is mostly
-# about realigning across DST transitions and recovering after a thermostat
-# power loss within one interval.
+# about realigning across DST transitions and recovering within one interval
+# after the clock is lost (backup batteries depleted or removed; ordinary
+# system power loss is held by the batteries).
 CLOCK_SYNC_INTERVAL_S = 3600
 
 # COS bits we enable so the thermostat pushes us updates instead of us polling.

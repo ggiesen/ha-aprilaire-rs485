@@ -219,13 +219,15 @@ a thermostat only gets outdoor humidity from its own support-module sensor.
 
 ## Clock sync
 
-The 8800 keeps its own clock, which drifts slowly and resets on power loss.
-With clock sync enabled (the default), the integration pushes Home Assistant's
-local date and time to the bus at startup and hourly. It does **not** change the
-thermostat's daylight-saving setting - the thermostat keeps handling DST, and
-the periodic push keeps the displayed time correct across transitions and after
-a power loss. Turn it off if you would rather manage the clock at the
-thermostat.
+The 8800 keeps its own clock, which drifts slowly. Backup batteries hold the
+time through ordinary system power loss; the clock is only lost when those
+batteries are depleted or removed. With clock sync enabled (the default), the
+integration pushes Home Assistant's local date and time to the bus at startup
+and hourly. It does **not** change the thermostat's daylight-saving setting -
+the thermostat keeps handling DST, and the periodic push keeps the displayed
+time correct across transitions and restores it after the clock has been lost
+(depleted or replaced batteries). Turn it off if you would rather manage the
+clock at the thermostat.
 
 ## Messaging
 
