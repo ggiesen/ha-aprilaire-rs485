@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
@@ -26,7 +25,7 @@ from .const import (
     DEFAULT_MAX_ADDRESS,
     DOMAIN,
 )
-from .coordinator import Aprilaire8800Coordinator
+from .coordinator import Aprilaire8800ConfigEntry, Aprilaire8800Coordinator
 from .services import async_register_services, async_unregister_services
 
 _LOGGER = logging.getLogger(__name__)
@@ -42,7 +41,7 @@ PLATFORMS: list[Platform] = [
 ]
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: Aprilaire8800ConfigEntry) -> bool:
     """Set up Aprilaire 8800 from a config entry."""
     # Options (edited via the options flow) override the values captured at
     # initial setup. Only the outdoor-temperature settings are editable there;
@@ -74,7 +73,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator.config_entry_id = entry.entry_id
     await coordinator.async_start()
 
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+    entry.runtime_data = coordinator
 
     # Register the bus pseudo-device up front so the per-node devices created
     # during platform setup below can reference it as their via_device.
@@ -98,18 +97,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+async def _async_update_listener(hass: HomeAssistant, entry: Aprilaire8800ConfigEntry) -> None:
     """Reload the config entry after its options are updated."""
     await hass.config_entries.async_reload(entry.entry_id)
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: Aprilaire8800ConfigEntry) -> bool:
     """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        coordinator: Aprilaire8800Coordinator = hass.data[DOMAIN].pop(entry.entry_id)
-        await coordinator.async_stop()
-        # If this was the last entry, drop the services too.
-        if not hass.data[DOMAIN]:
+        await entry.runtime_data.async_stop()
+        # If this was the last loaded entry, drop the shared services too.
+        remaining = [
+            e
+            for e in hass.config_entries.async_loaded_entries(DOMAIN)
+            if e.entry_id != entry.entry_id
+        ]
+        if not remaining:
             async_unregister_services(hass)
     return unload_ok

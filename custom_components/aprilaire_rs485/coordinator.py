@@ -33,6 +33,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_send
@@ -825,6 +826,10 @@ class Aprilaire8800Coordinator:
                 node.support_module_readings[(module, sensor)] = (hum, "%")
 
         # Anything else: ignored. Add more handlers as needed.
+
+
+# Typed config entry: the coordinator is stored on entry.runtime_data.
+type Aprilaire8800ConfigEntry = ConfigEntry[Aprilaire8800Coordinator]
 
 
 def _format_setpoint(value: float) -> str:

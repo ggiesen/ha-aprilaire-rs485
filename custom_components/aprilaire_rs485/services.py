@@ -74,19 +74,22 @@ _CLEAR_PERM_SCHEMA = vol.Schema(
 
 
 def _coordinators(hass: HomeAssistant) -> list[Aprilaire8800Coordinator]:
-    """Return every coordinator-like value currently set up under our domain.
+    """Return every coordinator currently set up under our domain.
 
-    Uses duck typing rather than isinstance so test doubles work without
-    subclassing. The filter is still useful as a guard against unexpected
-    values ever ending up in hass.data[DOMAIN]; we just check for the
-    attributes services actually touch.
+    Reads each loaded config entry's ``runtime_data``. Uses duck typing
+    rather than isinstance so test doubles work without subclassing; we only
+    check for the attributes the services actually touch.
     """
-    bucket = hass.data.get(DOMAIN, {})
-    return [
-        v
-        for v in bucket.values()
-        if hasattr(v, "nodes") and hasattr(v, "async_set_display_message")
-    ]
+    coordinators: list[Aprilaire8800Coordinator] = []
+    for entry in hass.config_entries.async_loaded_entries(DOMAIN):
+        coord = getattr(entry, "runtime_data", None)
+        if (
+            coord is not None
+            and hasattr(coord, "nodes")
+            and hasattr(coord, "async_set_display_message")
+        ):
+            coordinators.append(coord)
+    return coordinators
 
 
 @callback

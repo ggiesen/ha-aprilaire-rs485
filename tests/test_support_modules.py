@@ -233,11 +233,10 @@ async def test_platform_skips_m1s1_when_type_is_rt(hass: HomeAssistant) -> None:
     )
 
     coord = _FakeCoordinator(_node_with({(1, 1): "RT", (1, 2): "CH", (2, 1): "CT"}))
-    hass.data[DOMAIN] = {"fake_entry_id": coord}
-
     entry = MagicMock()
     entry.entry_id = "fake_entry_id"
     entry.async_on_unload = MagicMock()
+    entry.runtime_data = coord
 
     added: list = []
 
@@ -262,11 +261,10 @@ async def test_platform_skips_m1s2_when_type_is_rh(hass: HomeAssistant) -> None:
     )
 
     coord = _FakeCoordinator(_node_with({(1, 1): "CT", (1, 2): "RH"}))
-    hass.data[DOMAIN] = {"fake_entry_id": coord}
-
     entry = MagicMock()
     entry.entry_id = "fake_entry_id"
     entry.async_on_unload = MagicMock()
+    entry.runtime_data = coord
 
     added: list = []
 
@@ -297,11 +295,10 @@ async def test_platform_does_not_skip_non_outdoor_rt_rh(
     )
 
     coord = _FakeCoordinator(_node_with({(2, 1): "RT", (3, 2): "RH"}))
-    hass.data[DOMAIN] = {"fake_entry_id": coord}
-
     entry = MagicMock()
     entry.entry_id = "fake_entry_id"
     entry.async_on_unload = MagicMock()
+    entry.runtime_data = coord
 
     added: list = []
 

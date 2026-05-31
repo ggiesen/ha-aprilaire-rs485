@@ -71,7 +71,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up clear-alarm buttons for all currently-known nodes."""
-    coordinator: Aprilaire8800Coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator: Aprilaire8800Coordinator = entry.runtime_data
     added: set[tuple[int, str]] = set()
 
     @callback

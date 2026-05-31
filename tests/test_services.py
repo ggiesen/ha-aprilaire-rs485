@@ -25,6 +25,7 @@ pytest.importorskip("voluptuous")
 
 import pytest_asyncio
 import voluptuous as vol
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
@@ -53,7 +54,9 @@ async def coordinator_with_two_nodes(hass: HomeAssistant):
     # Register a real (mock) config entry so the device registry will
     # accept devices linked to it. The newer HA device registry rejects
     # links to unknown config entries.
-    entry = MockConfigEntry(domain=DOMAIN, data={}, entry_id="fake_entry_id")
+    entry = MockConfigEntry(
+        domain=DOMAIN, data={}, entry_id="fake_entry_id", state=ConfigEntryState.LOADED
+    )
     entry.add_to_hass(hass)
 
     class FakeCoordinator:
@@ -65,7 +68,7 @@ async def coordinator_with_two_nodes(hass: HomeAssistant):
         config_entry_id = "fake_entry_id"
 
     coord = FakeCoordinator()
-    hass.data.setdefault(DOMAIN, {})["fake_entry_id"] = coord
+    entry.runtime_data = coord
 
     # Register two devices, one per node, plus the bus pseudo-device. The
     # services must resolve targets to the per-node devices and skip the bus.
