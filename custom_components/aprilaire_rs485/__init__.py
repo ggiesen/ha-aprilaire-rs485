@@ -11,6 +11,7 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 
 from .const import (
     CONF_ADDRESSES,
@@ -64,6 +65,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await coordinator.async_start()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+
+    # Register the bus pseudo-device up front so the per-node devices created
+    # during platform setup below can reference it as their via_device.
+    # Without this the device registry sees via_device pointing at a device
+    # that does not exist yet - a deprecation warning today, a hard error
+    # from HA 2025.12.
+    dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        **coordinator.bus_device_info(),
+    )
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     # Services live at the integration level and are shared across config

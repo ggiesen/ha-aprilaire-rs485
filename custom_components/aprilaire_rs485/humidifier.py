@@ -18,6 +18,7 @@ reasonable alternative.
 from __future__ import annotations
 
 import logging
+from functools import partial
 from typing import Any
 
 from homeassistant.components.humidifier import (
@@ -72,18 +73,30 @@ async def async_setup_entry(
             ]
         )
 
-    for addr in list(coordinator.nodes):
-        _maybe_add(addr)
+    tracked: set[int] = set()
 
-    entry.async_on_unload(async_dispatcher_connect(hass, SIGNAL_NODE_DISCOVERED, _maybe_add))
-    for addr in list(coordinator.nodes):
-        entry.async_on_unload(
-            async_dispatcher_connect(
-                hass,
-                SIGNAL_NODE_UPDATED.format(address=addr),
-                lambda a=addr: _maybe_add(a),
+    @callback
+    def _track_node(address: int) -> None:
+        # Subscribe to this node's update signal once, so a CT response that
+        # arrives after discovery (the common case - queries are answered
+        # asynchronously on the RX thread, so controller_type is usually
+        # still None at platform-setup time) re-triggers entity creation.
+        # This also covers nodes that first appear after platform setup,
+        # which would otherwise never get humidifier entities.
+        if address not in tracked:
+            tracked.add(address)
+            entry.async_on_unload(
+                async_dispatcher_connect(
+                    hass,
+                    SIGNAL_NODE_UPDATED.format(address=address),
+                    partial(_maybe_add, address),
+                )
             )
-        )
+        _maybe_add(address)
+
+    entry.async_on_unload(async_dispatcher_connect(hass, SIGNAL_NODE_DISCOVERED, _track_node))
+    for addr in list(coordinator.nodes):
+        _track_node(addr)
 
 
 class Aprilaire8800Humidifier(HumidifierEntity):

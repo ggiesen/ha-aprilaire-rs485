@@ -6,6 +6,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Climate and humidifier entities were never created on a running system. The
+  per-node update subscription was connected through a bare `lambda`, so Home
+  Assistant ran it in an executor thread where `async_add_entities` fails
+  ("Task was destroyed but it is pending"). Dispatch now goes through the
+  `@callback`-decorated handler and runs on the event loop.
+- A node discovered after platform setup never received an update
+  subscription, so a thermostat that appeared late (or whose `CT` response
+  arrived after discovery) never got a climate/humidifier entity. Each node is
+  now subscribed when it is discovered.
+- Per-node devices referenced the bus pseudo-device as their `via_device`
+  before that device existed, which logged a deprecation warning and would
+  break in Home Assistant 2025.12. The bus device is now registered during
+  setup before any node entity references it.
+
+### Changed
+
+- The climate entity advertises the temperature feature matching the current
+  mode (single `TARGET_TEMPERATURE` in heat/cool, `TARGET_TEMPERATURE_RANGE`
+  in auto) instead of both at once, so the frontend no longer shows a
+  dual-setpoint range control in single-setpoint modes. It also declares
+  `TURN_ON` and `TURN_OFF`.
+
 ## [0.1.0] - 2026-05-20
 
 ### Added

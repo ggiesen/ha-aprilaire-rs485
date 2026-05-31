@@ -12,6 +12,7 @@ instead and are skipped here.
 from __future__ import annotations
 
 import logging
+from functools import partial
 from typing import Any
 
 from homeassistant.components.climate import (
@@ -86,18 +87,30 @@ async def async_setup_entry(
         known.add(address)
         async_add_entities([Aprilaire8800Climate(coordinator, address)])
 
-    for addr in list(coordinator.nodes):
-        _maybe_add(addr)
+    tracked: set[int] = set()
 
-    entry.async_on_unload(async_dispatcher_connect(hass, SIGNAL_NODE_DISCOVERED, _maybe_add))
-    for addr in list(coordinator.nodes):
-        entry.async_on_unload(
-            async_dispatcher_connect(
-                hass,
-                SIGNAL_NODE_UPDATED.format(address=addr),
-                lambda a=addr: _maybe_add(a),
+    @callback
+    def _track_node(address: int) -> None:
+        # Subscribe to this node's update signal once, so a CT response that
+        # arrives after discovery (the common case - queries are answered
+        # asynchronously on the RX thread, so controller_type is usually
+        # still None at platform-setup time) re-triggers entity creation.
+        # This also covers nodes that first appear after platform setup,
+        # which would otherwise never get a climate entity.
+        if address not in tracked:
+            tracked.add(address)
+            entry.async_on_unload(
+                async_dispatcher_connect(
+                    hass,
+                    SIGNAL_NODE_UPDATED.format(address=address),
+                    partial(_maybe_add, address),
+                )
             )
-        )
+        _maybe_add(address)
+
+    entry.async_on_unload(async_dispatcher_connect(hass, SIGNAL_NODE_DISCOVERED, _track_node))
+    for addr in list(coordinator.nodes):
+        _track_node(addr)
 
 
 class Aprilaire8800Climate(ClimateEntity):
@@ -113,11 +126,6 @@ class Aprilaire8800Climate(ClimateEntity):
     ]
     _attr_name = None  # Use the device name.
     _attr_should_poll = False
-    _attr_supported_features = (
-        ClimateEntityFeature.TARGET_TEMPERATURE
-        | ClimateEntityFeature.TARGET_TEMPERATURE_RANGE
-        | ClimateEntityFeature.FAN_MODE
-    )
 
     def __init__(self, coordinator: Aprilaire8800Coordinator, address: int) -> None:
         """Initialise the climate entity."""
@@ -134,6 +142,28 @@ class Aprilaire8800Climate(ClimateEntity):
     def available(self) -> bool:
         """Return whether the underlying node has been seen."""
         return self._node is not None
+
+    @property
+    def supported_features(self) -> ClimateEntityFeature:
+        """Expose the temperature feature appropriate to the current mode.
+
+        HA renders the dual low/high range control only when
+        TARGET_TEMPERATURE_RANGE is active, and the single setpoint control
+        for TARGET_TEMPERATURE. Advertising both at once makes the frontend
+        show a range slider even in single-setpoint heat/cool modes, so we
+        switch based on the node's current mode. AUTO maps to the range
+        view (heat + cool setpoints); everything else (including OFF, where
+        HA hides the control anyway) uses the single setpoint.
+        """
+        features = (
+            ClimateEntityFeature.FAN_MODE
+            | ClimateEntityFeature.TURN_ON
+            | ClimateEntityFeature.TURN_OFF
+        )
+        node = self._node
+        if node and node.mode == MODE_AUTO:
+            return features | ClimateEntityFeature.TARGET_TEMPERATURE_RANGE
+        return features | ClimateEntityFeature.TARGET_TEMPERATURE
 
     @property
     def temperature_unit(self) -> str:
