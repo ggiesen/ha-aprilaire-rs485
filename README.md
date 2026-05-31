@@ -510,4 +510,7 @@ This is a personal project, but PRs are welcome. Please:
 
 This project is licensed under the [Mozilla Public License 2.0](LICENSE).
 The 8800 and 8811 manuals are the property of Research Products Corporation
-/ Aprilaire.
+/ Aprilaire. The brand icon and logo under `custom_components/aprilaire_rs485/brand/`
+are Aprilaire trademarks (sourced from the `home-assistant/brands` repository)
+and are included only to identify the supported hardware; they are not covered
+by the MPL.

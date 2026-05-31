@@ -16,6 +16,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - An options flow to change the outdoor temperature source and rebroadcast
   toggle after initial setup (Settings -> Devices & services -> the entry ->
   Configure). Saving reloads the integration so the change takes effect.
+- A bundled brand icon and logo (in `brand/`) so the integration shows the
+  Aprilaire artwork in the UI with no `home-assistant/brands` submission.
+  Requires HA 2026.3+ (local brand images); on older HA the icon is absent
+  unless the assets are also submitted to the brands repo.
 
 ### Fixed
 
