@@ -16,11 +16,13 @@ from homeassistant.helpers import device_registry as dr
 from .const import (
     CONF_ADDRESSES,
     CONF_BAUD,
+    CONF_CLOCK_SYNC,
     CONF_MAX_ADDRESS,
     CONF_OUTDOOR_TEMP_REBROADCAST,
     CONF_OUTDOOR_TEMP_SOURCE,
     CONF_PORT,
     DEFAULT_BAUD,
+    DEFAULT_CLOCK_SYNC,
     DEFAULT_MAX_ADDRESS,
     DOMAIN,
 )
@@ -55,6 +57,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # rebroadcast behaviour (the lowest-addressed sensor-equipped node
     # populates OT on its peers).
     ot_rebroadcast = config.get(CONF_OUTDOOR_TEMP_REBROADCAST, True)
+    clock_sync = config.get(CONF_CLOCK_SYNC, DEFAULT_CLOCK_SYNC)
 
     coordinator = Aprilaire8800Coordinator(
         hass=hass,
@@ -64,6 +67,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         explicit_addresses=explicit,
         outdoor_temp_source=ot_source,
         outdoor_temp_rebroadcast=ot_rebroadcast,
+        clock_sync=clock_sync,
     )
     # Stash the originating config entry id on the coordinator so the
     # services module can use it as a stable dedupe key.

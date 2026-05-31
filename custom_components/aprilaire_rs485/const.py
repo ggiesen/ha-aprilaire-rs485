@@ -25,13 +25,21 @@ CONF_PORT = "port"  # Holds a pyserial URL or device path.
 # - so broadcasting globally is always safe.
 CONF_OUTDOOR_TEMP_SOURCE = "outdoor_temp_source"
 CONF_OUTDOOR_TEMP_REBROADCAST = "outdoor_temp_rebroadcast"
+# When true, push HA's local wall-clock time/date to the bus periodically and
+# leave the thermostat's DLS (DST) setting alone.
+CONF_CLOCK_SYNC = "clock_sync"
 
 DEFAULT_BAUD = 9600
 DEFAULT_MAX_ADDRESS = 8  # See README for why this should match your real node count.
 DEFAULT_REFRESH_INTERVAL_S = 60
+DEFAULT_CLOCK_SYNC = True
 # Manual p.34: thermostats discard a pushed OT value after a 10-minute
 # validity window. Broadcast at half that, comfortably ahead of expiry.
 OUTDOOR_TEMP_BROADCAST_INTERVAL_S = 300
+# Clock push cadence. The device RTC drifts ~1 min/30 days, so this is mostly
+# about realigning across DST transitions and recovering after a thermostat
+# power loss within one interval.
+CLOCK_SYNC_INTERVAL_S = 3600
 
 # COS bits we enable so the thermostat pushes us updates instead of us polling.
 # These reset to defaults on every thermostat power-cycle (manual p.17), so the

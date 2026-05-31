@@ -21,11 +21,13 @@ from homeassistant.helpers import selector
 from .const import (
     CONF_ADDRESSES,
     CONF_BAUD,
+    CONF_CLOCK_SYNC,
     CONF_MAX_ADDRESS,
     CONF_OUTDOOR_TEMP_REBROADCAST,
     CONF_OUTDOOR_TEMP_SOURCE,
     CONF_PORT,
     DEFAULT_BAUD,
+    DEFAULT_CLOCK_SYNC,
     DEFAULT_MAX_ADDRESS,
     DOMAIN,
 )
@@ -100,6 +102,10 @@ DATA_SCHEMA = vol.Schema(
         # multi-zone install gets working OT on every screen without extra
         # configuration.
         vol.Optional(CONF_OUTDOOR_TEMP_REBROADCAST, default=True): bool,
+        # Push HA's local wall-clock time to the thermostats periodically. We
+        # never change the device's DLS (DST) setting; the device keeps owning
+        # DST and we just keep the wall time correct.
+        vol.Optional(CONF_CLOCK_SYNC, default=DEFAULT_CLOCK_SYNC): bool,
     }
 )
 
@@ -153,6 +159,7 @@ class Aprilaire8800ConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_OUTDOOR_TEMP_REBROADCAST: bool(
                         user_input.get(CONF_OUTDOOR_TEMP_REBROADCAST, True)
                     ),
+                    CONF_CLOCK_SYNC: bool(user_input.get(CONF_CLOCK_SYNC, DEFAULT_CLOCK_SYNC)),
                 }
                 await self.async_set_unique_id(f"{DOMAIN}:{url}")
                 self._abort_if_unique_id_configured()
@@ -168,10 +175,10 @@ class Aprilaire8800ConfigFlow(ConfigFlow, domain=DOMAIN):
 class Aprilaire8800OptionsFlow(OptionsFlow):
     """Edit runtime-tunable settings after initial setup.
 
-    Only the outdoor-temperature source and rebroadcast toggle are editable
-    here; the transport (port/baud/addresses) is fixed at setup time. Saving
-    triggers a reload of the config entry (registered in ``__init__``) so the
-    coordinator restarts with the new settings.
+    Only the outdoor-temperature settings and the clock-sync toggle are
+    editable here; the transport (port/baud/addresses) is fixed at setup time.
+    Saving triggers a reload of the config entry (registered in ``__init__``)
+    so the coordinator restarts with the new settings.
     """
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
@@ -184,6 +191,7 @@ class Aprilaire8800OptionsFlow(OptionsFlow):
                     CONF_OUTDOOR_TEMP_REBROADCAST: bool(
                         user_input.get(CONF_OUTDOOR_TEMP_REBROADCAST, True)
                     ),
+                    CONF_CLOCK_SYNC: bool(user_input.get(CONF_CLOCK_SYNC, DEFAULT_CLOCK_SYNC)),
                 }
             )
 
@@ -193,10 +201,12 @@ class Aprilaire8800OptionsFlow(OptionsFlow):
             {
                 vol.Optional(CONF_OUTDOOR_TEMP_SOURCE): _outdoor_temp_source_selector(),
                 vol.Optional(CONF_OUTDOOR_TEMP_REBROADCAST, default=True): bool,
+                vol.Optional(CONF_CLOCK_SYNC, default=DEFAULT_CLOCK_SYNC): bool,
             }
         )
         suggested: dict[str, Any] = {
             CONF_OUTDOOR_TEMP_REBROADCAST: current.get(CONF_OUTDOOR_TEMP_REBROADCAST, True),
+            CONF_CLOCK_SYNC: current.get(CONF_CLOCK_SYNC, DEFAULT_CLOCK_SYNC),
         }
         if current.get(CONF_OUTDOOR_TEMP_SOURCE):
             suggested[CONF_OUTDOOR_TEMP_SOURCE] = current[CONF_OUTDOOR_TEMP_SOURCE]

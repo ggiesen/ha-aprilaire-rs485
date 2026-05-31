@@ -31,14 +31,16 @@ import contextlib
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.util import dt as dt_util
 
 from .const import (
+    CLOCK_SYNC_INTERVAL_S,
     COS_ENABLE,
     DEFAULT_REFRESH_INTERVAL_S,
     DOMAIN,
@@ -185,6 +187,7 @@ class Aprilaire8800Coordinator:
         explicit_addresses: list[int] | None = None,
         outdoor_temp_source: str | None = None,
         outdoor_temp_rebroadcast: bool = True,
+        clock_sync: bool = True,
     ) -> None:
         """Initialise the coordinator but do not yet open the transport."""
         self.hass = hass
@@ -193,6 +196,7 @@ class Aprilaire8800Coordinator:
         self._explicit_addresses = explicit_addresses
         self._refresh_unsub: Callable[[], None] | None = None
         self._ot_unsub: Callable[[], None] | None = None
+        self._clock_unsub: Callable[[], None] | None = None
         self._discovery_done = asyncio.Event()
         self._cos_applied: set[int] = set()
         # OT push configuration. Source is an HA entity_id (sensor.* or
@@ -200,6 +204,11 @@ class Aprilaire8800Coordinator:
         # whether we re-emit OT from a sensor-equipped node to its peers.
         self._ot_source = (outdoor_temp_source or "").strip() or None
         self._ot_rebroadcast = bool(outdoor_temp_rebroadcast)
+        # When true, push HA's local wall-clock time/date to the bus on a
+        # periodic cadence. We never touch the device's DLS setting - it owns
+        # DST and our re-push keeps the wall time aligned across transitions
+        # and after a thermostat power loss.
+        self._clock_sync = bool(clock_sync)
 
     def device_info(self, address: int) -> DeviceInfo:
         """Return DeviceInfo for the given node address.
@@ -255,6 +264,17 @@ class Aprilaire8800Coordinator:
                 self._async_broadcast_outdoor_temp,
                 timedelta(seconds=OUTDOOR_TEMP_BROADCAST_INTERVAL_S),
             )
+        # Clock sync: push wall-clock time now and on a periodic cadence. The
+        # re-push corrects drift, realigns across DST transitions (the device's
+        # DLS does the jump; we reassert the truth), and recovers the clock
+        # after a thermostat power loss within one interval.
+        if self._clock_sync:
+            await self._async_push_clock()
+            self._clock_unsub = async_track_time_interval(
+                self.hass,
+                self._async_push_clock,
+                timedelta(seconds=CLOCK_SYNC_INTERVAL_S),
+            )
 
     async def async_stop(self) -> None:
         """Stop the periodic refresh and tear down the bus connection."""
@@ -264,6 +284,9 @@ class Aprilaire8800Coordinator:
         if self._ot_unsub is not None:
             self._ot_unsub()
             self._ot_unsub = None
+        if self._clock_unsub is not None:
+            self._clock_unsub()
+            self._clock_unsub = None
         await self.hass.async_add_executor_job(self.protocol.stop)
 
     # ---------- discovery ----------
@@ -400,6 +423,21 @@ class Aprilaire8800Coordinator:
     # Support Module 1 Sensor 1 = RT) silently ignore the assignment.
     # Broadcasting globally is therefore safe regardless of which nodes
     # have sensors. The source of the value is the host's choice.
+
+    async def _async_push_clock(self, _now=None) -> None:
+        """Push HA's local wall-clock time and date to every node.
+
+        Sent as global writes (addr=None). We push wall-clock local time and
+        leave the device's DLS untouched: the 8800 stores wall time and uses
+        DLS only to auto-jump at DST transitions, so this keeps the displayed
+        time correct without forcing DLS off. (If a unit ever turns out to
+        store standard time instead, switch the value below to
+        ``dt_util.now() - dt_util.now().dst()`` when DLS is active.)
+        """
+        time_str, date_str = _format_clock(dt_util.now())
+        _LOGGER.debug("Pushing clock TIME=%s DATE=%s globally", time_str, date_str)
+        await self._async_send(None, "TIME", time_str)
+        await self._async_send(None, "DATE", date_str)
 
     async def _async_broadcast_outdoor_temp(self, _now=None) -> None:
         """Push a fresh outdoor temperature value to the bus.
@@ -793,6 +831,17 @@ def _format_setpoint(value: float) -> str:
     conversion (we don't second-guess SCALE here).
     """
     return f"{round(value)}"
+
+
+def _format_clock(now: datetime) -> tuple[str, str]:
+    """Return the (TIME, DATE) wire strings for a local datetime.
+
+    TIME is ``hhmm`` (24-hour); DATE is ``mmddyy`` (manual pp.20-21). All
+    fields are zero-padded; the year is the last two digits.
+    """
+    time_str = f"{now.hour:02d}{now.minute:02d}"
+    date_str = f"{now.month:02d}{now.day:02d}{now.year % 100:02d}"
+    return time_str, date_str
 
 
 # Messaging helpers. These live at module level (rather than as methods on
