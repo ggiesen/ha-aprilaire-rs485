@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report an issue (GitLab)
+    url: https://gitlab.com/ggiesen/ha-aprilaire-rs485/-/issues
+    about: This project is developed on GitLab. Please open issues and merge requests there.

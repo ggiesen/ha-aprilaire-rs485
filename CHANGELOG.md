@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- The manifest `issue_tracker` now points to the GitLab issues page, where
+  development and triage happen. New-issue creation from GitHub is funneled to
+  GitLab as well.
+
 ## [0.1.1] - 2026-05-31
 
 ### Changed
