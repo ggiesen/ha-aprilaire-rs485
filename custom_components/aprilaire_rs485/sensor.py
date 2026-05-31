@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -197,7 +198,7 @@ async def async_setup_entry(
             async_dispatcher_connect(
                 hass,
                 SIGNAL_NODE_SUPPORT_MODULES.format(address=address),
-                lambda _addr=address: _add_support_modules_for(_addr),
+                partial(_add_support_modules_for, address),
             )
         )
         _add_support_modules_for(address)
@@ -298,13 +299,12 @@ class Aprilaire8800BusCountSensor(SensorEntity):
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to discovery signals so the count refreshes."""
-        self.async_on_remove(
-            async_dispatcher_connect(
-                self.hass,
-                SIGNAL_NODE_DISCOVERED,
-                lambda _a: self.async_write_ha_state(),
-            )
-        )
+
+        @callback
+        def _refresh(_address: int) -> None:
+            self.async_write_ha_state()
+
+        self.async_on_remove(async_dispatcher_connect(self.hass, SIGNAL_NODE_DISCOVERED, _refresh))
 
 
 class Aprilaire8800BusAddressesSensor(SensorEntity):
@@ -329,13 +329,12 @@ class Aprilaire8800BusAddressesSensor(SensorEntity):
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to discovery signals so the list refreshes."""
-        self.async_on_remove(
-            async_dispatcher_connect(
-                self.hass,
-                SIGNAL_NODE_DISCOVERED,
-                lambda _a: self.async_write_ha_state(),
-            )
-        )
+
+        @callback
+        def _refresh(_address: int) -> None:
+            self.async_write_ha_state()
+
+        self.async_on_remove(async_dispatcher_connect(self.hass, SIGNAL_NODE_DISCOVERED, _refresh))
 
 
 # Type-code semantics from manual p.32:

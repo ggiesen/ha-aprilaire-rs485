@@ -38,6 +38,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- The bus sensors (node count, discovered addresses) and support-module
+  sensor discovery dispatched `async_write_ha_state` / entity creation through
+  bare `lambda`s, which Home Assistant runs on an executor thread - now a hard
+  "calls async_write_ha_state from a thread other than the event loop" error.
+  They now dispatch through `@callback` targets so they run on the event loop.
+  (Same class as the climate/humidifier dispatch fix; missed in `sensor.py`.)
 - Climate and humidifier entities were never created on a running system. The
   per-node update subscription was connected through a bare `lambda`, so Home
   Assistant ran it in an executor thread where `async_add_entities` fails
