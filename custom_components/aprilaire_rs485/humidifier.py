@@ -9,10 +9,11 @@ For each humidistat-mode node (``CT=1``) we create two entities - one
 ``dehumidifier`` - because HA's humidifier entity model is single-direction
 while the 8800 can do humidify, dehumidify, or both via AUTO.
 
-This area of the integration is the most likely to need rework on real
-hardware. If the two-entity-per-node model proves confusing, replacing this
-platform with a combination of ``number`` and ``select`` entities is a
-reasonable alternative.
+The node has a single mode (OFF/HUMID/DEHUM/AUTO), so the two toggles are
+composed onto it: enabling one direction while the other is active means
+AUTO, and disabling one while in AUTO leaves the other running. This is the
+same model the core ``aprilaire`` integration uses for its IP-based
+thermostats (two independent humidifier toggles rather than a mode select).
 """
 
 from __future__ import annotations
@@ -118,6 +119,12 @@ class Aprilaire8800Humidifier(HumidifierEntity):
         self._coordinator = coordinator
         self._address = address
         self._dehumidifier = dehumidifier
+        # The node mode that represents *this* direction active alone, and the
+        # one that represents the *other* direction. AUTO means both are
+        # active; these let turn_on/turn_off compose the two directions onto
+        # the single node mode.
+        self._this_mode = MODE_DEHUM if dehumidifier else MODE_HUMID
+        self._other_mode = MODE_HUMID if dehumidifier else MODE_DEHUM
         suffix = "dehumidifier" if dehumidifier else "humidifier"
         self._attr_unique_id = f"{DOMAIN}_{address}_{suffix}"
         self._attr_translation_key = suffix
@@ -182,17 +189,34 @@ class Aprilaire8800Humidifier(HumidifierEntity):
             await self._coordinator.async_set_humid_setpoint(self._address, humidity)
 
     async def async_turn_on(self, **kwargs: Any) -> None:  # noqa: ARG002
-        """Activate this direction by setting the node mode accordingly."""
-        mode = MODE_DEHUM if self._dehumidifier else MODE_HUMID
-        await self._coordinator.async_set_mode(self._address, mode)
+        """Enable this direction, composing with the other direction's state.
+
+        The node has a single mode, so enabling this direction while the other
+        is already active means AUTO (both); enabling it alone means this
+        direction only. Two independent humidifier toggles thus compose onto
+        the four node modes, the same model the core ``aprilaire`` integration
+        uses for its (IP-based) thermostats.
+        """
+        node = self._node
+        if not node:
+            return
+        other_on = node.mode in (self._other_mode, MODE_AUTO)
+        target = MODE_AUTO if other_on else self._this_mode
+        await self._coordinator.async_set_mode(self._address, target)
 
     async def async_turn_off(self, **kwargs: Any) -> None:  # noqa: ARG002
-        """Turn the node off entirely.
+        """Disable this direction, leaving the other direction untouched.
 
-        Note: a node has a single system mode, so turning either direction
-        ``off`` switches the node out of humidify/dehumidify entirely.
+        Turning this direction off while in AUTO drops to the other direction
+        only; turning it off when it was the only active direction turns the
+        node off.
         """
-        await self._coordinator.async_set_mode(self._address, MODE_OFF)
+        node = self._node
+        if not node:
+            return
+        other_on = node.mode in (self._other_mode, MODE_AUTO)
+        target = self._other_mode if other_on else MODE_OFF
+        await self._coordinator.async_set_mode(self._address, target)
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to per-node update signals."""

@@ -33,6 +33,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   source. Previously the reader only parsed an entity's numeric state, so the
   `weather.home` example in the docs silently failed; it now reads the
   `temperature` / `current_temperature` attribute for those domains.
+- The humidifier/dehumidifier toggles now compose onto the node's single mode
+  instead of clobbering it. Turning a direction on while the other is active
+  now reaches AUTO (previously unreachable from the UI), and turning one off
+  now drops to the other direction instead of switching the node fully off.
 
 ### Changed
 

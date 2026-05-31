@@ -423,9 +423,13 @@ read-only. Thermostats receive OH only from a Support Module 1 / Sensor
 
 ## Known weak spots
 
-- `humidifier.py` maps awkwardly onto HA's `HumidifierEntity` in AUTO
-  (simultaneous humid+dehum) mode. Replace with `number` + `select` if it
-  bothers you.
+- The humidistat's single node mode (OFF/HUMID/DEHUM/AUTO) is represented as
+  two independent `HumidifierEntity` toggles that compose: enabling one
+  direction while the other is on gives AUTO, disabling one while in AUTO
+  leaves the other. This mirrors the core `aprilaire` integration's model.
+  Note the two directions can't be auto-detected on the RS-485 protocol, so
+  both entities are always created even if your unit only does one direction
+  (see the docs; the unused one simply stays off).
 - `hvac_action` inference from relays is heuristic. The device doesn't
   expose "I am calling for heat" explicitly - only relay state + mode. Heat
   pump aux-with-compressor edge cases may misclassify.
