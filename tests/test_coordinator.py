@@ -199,6 +199,16 @@ def test_deadband_parsed_without_scale() -> None:
     assert node.deadband == 2
 
 
+def test_alarm_periods_parsed() -> None:
+    """[alarm]ALMP responses populate node.alarm_periods keyed by short code."""
+    node = NodeState(address=1)
+    apply_to_state(node, "FLTALMP", "6")
+    apply_to_state(node, "WPALMP", "12")
+    apply_to_state(node, "DEHALMP", "off")
+    apply_to_state(node, "SYSALMP", "OFF")
+    assert node.alarm_periods == {"FLT": "6", "WP": "12", "DEH": "OFF", "SYS": "OFF"}
+
+
 # ---------- relay state for hvac_action ----------
 
 

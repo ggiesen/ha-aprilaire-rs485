@@ -72,6 +72,72 @@
       "dehumidifier": {"name": "Dehumidifier"},
       "humidifier": {"name": "Humidifier"}
     },
+    "select": {
+      "alarm_period_filter": {
+        "name": "Air filter alarm interval",
+        "state": {
+          "off": "Off",
+          "1": "1 month",
+          "3": "3 months",
+          "6": "6 months",
+          "12": "12 months"
+        }
+      },
+      "alarm_period_water_panel": {
+        "name": "Water panel alarm interval",
+        "state": {
+          "off": "Off",
+          "1": "1 month",
+          "2": "2 months",
+          "3": "3 months",
+          "4": "4 months",
+          "5": "5 months",
+          "6": "6 months",
+          "7": "7 months",
+          "8": "8 months",
+          "9": "9 months",
+          "10": "10 months",
+          "11": "11 months",
+          "12": "12 months"
+        }
+      },
+      "alarm_period_dehumidifier": {
+        "name": "Dehumidifier alarm interval",
+        "state": {
+          "off": "Off",
+          "1": "1 month",
+          "2": "2 months",
+          "3": "3 months",
+          "4": "4 months",
+          "5": "5 months",
+          "6": "6 months",
+          "7": "7 months",
+          "8": "8 months",
+          "9": "9 months",
+          "10": "10 months",
+          "11": "11 months",
+          "12": "12 months"
+        }
+      },
+      "alarm_period_system": {
+        "name": "HVAC system alarm interval",
+        "state": {
+          "off": "Off",
+          "1": "1 month",
+          "2": "2 months",
+          "3": "3 months",
+          "4": "4 months",
+          "5": "5 months",
+          "6": "6 months",
+          "7": "7 months",
+          "8": "8 months",
+          "9": "9 months",
+          "10": "10 months",
+          "11": "11 months",
+          "12": "12 months"
+        }
+      }
+    },
     "sensor": {
       "builtin_humidity": {"name": "Built-in humidity"},
       "discovered_addresses": {"name": "Discovered addresses"},

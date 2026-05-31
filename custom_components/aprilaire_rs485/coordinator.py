@@ -122,6 +122,12 @@ class NodeState:
     alarm_dehumidifier: bool | None = None
     alarm_system: bool | None = None
 
+    # Maintenance alarm periods (the [alarm]ALMP reminder intervals). Keyed by
+    # the short alarm code FLT/WP/DEH/SYS; value is the wire string ("OFF" or a
+    # month count). Read at startup; EEPROM-backed (not in the power-cycle
+    # reset set), so we don't re-apply or poll them.
+    alarm_periods: dict[str, str] = field(default_factory=dict)
+
     # Errors (zero means no error)
     errors: dict[str, int] = field(default_factory=dict)
 
@@ -337,6 +343,10 @@ class Aprilaire8800Coordinator:
         await self._async_query(addr, "WPALM")
         await self._async_query(addr, "DEHALM")
         await self._async_query(addr, "SYSALM")
+        await self._async_query(addr, "FLTALMP")
+        await self._async_query(addr, "WPALMP")
+        await self._async_query(addr, "DEHALMP")
+        await self._async_query(addr, "SYSALMP")
         await self._async_query(addr, "ERROR")
         await self._async_query(addr, "RECOVSTAT")
         # RSM is read once at startup; support modules are physical
@@ -543,6 +553,14 @@ class Aprilaire8800Coordinator:
         """Clear an alarm on the given node. ``alarm`` is one of FLT, WP, DEH, SYS."""
         await self._async_send(addr, f"{alarm}ALM", "OFF")
 
+    async def async_set_alarm_period(self, addr: int, alarm: str, value: str) -> None:
+        """Set a maintenance alarm period (reminder interval).
+
+        ``alarm`` is one of FLT, WP, DEH, SYS; ``value`` is the wire string
+        "OFF" or a month count (filter: 1/3/6/12; others: 1-12).
+        """
+        await self._async_send(addr, f"{alarm}ALMP", value)
+
     # ---------- messaging ----------
     #
     # The 8800 has five distinct display slots:
@@ -710,6 +728,10 @@ class Aprilaire8800Coordinator:
             node.alarm_dehumidifier = val.strip().upper() == "ON"
         elif cmd == "SYSALM":
             node.alarm_system = val.strip().upper() == "ON"
+
+        # Alarm periods (reminder intervals). cmd is "<short>ALMP".
+        elif cmd in ("FLTALMP", "WPALMP", "DEHALMP", "SYSALMP"):
+            node.alarm_periods[cmd[:-4]] = val.strip().upper()
 
         # Errors
         elif cmd == "ERROR":

@@ -24,6 +24,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   panel, dehumidifier, HVAC system), sending `[alarm]ALM=OFF`. The alarm
   states remain as problem `binary_sensor` entities; the buttons are the
   clear/acknowledge action, previously only possible at the thermostat.
+- A `select` per node for each maintenance-alarm reminder interval
+  (`[alarm]ALMP`): air filter (OFF/1/3/6/12 months) and water panel,
+  dehumidifier, and HVAC system (OFF/1-12 months), as config entities. These
+  are the thresholds that drive the alarm sensors. `HUMTYP` (humidifier
+  hardware type) is intentionally left to the thermostat's setup screens.
 
 ### Fixed
 
