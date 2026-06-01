@@ -25,7 +25,11 @@ or a TCP-to-RS-485 gateway.
   **select** to set its reminder interval.
 - **Diagnostics**: per-node sensor and communication error flags, progressive
   recovery and network-hold status, plus a bus-level connection sensor, node
-  count, and discovered-address list.
+  count, and discovered-address list. The bus device also exposes ten
+  reliability counters (parse / transport / apply / unknown-command errors,
+  write-verification failures, query timeouts, and activity totals) and fires
+  matching events, so bus trouble and rejected writes are visible rather than
+  silent. See [Diagnostics](#diagnostics-bus-counters-and-events).
 - **Display messaging**: the thermostat's message center exposed as text
   entities and services (temporary and four permanent message slots).
 - **Outdoor temperature sharing**: push a Home Assistant temperature to
@@ -149,6 +153,9 @@ plus one device per discovered thermostat or humidistat with its own entities.
 | Bus connection | binary_sensor | On when the transport is open |
 | Node count | sensor | Diagnostic; number of known nodes |
 | Discovered addresses | sensor | Diagnostic; comma-separated address list |
+| Parse / transport / apply / unknown-command errors | sensor | Diagnostic counters; see [Diagnostics](#diagnostics-bus-counters-and-events) |
+| Verification failures, query timeouts | sensor | Diagnostic counters; reliability signals |
+| Messages sent / received, verifications attempted, queries sent | sensor | Diagnostic activity totals (denominators for rates) |
 
 ### Per-node entities
 
@@ -198,6 +205,111 @@ humidity**. Remote sensors in any other position get their own entity.
 
 Support-module readings are polled on each refresh (they have no change-of-state
 push). The added bus traffic is small even on a fully populated bus.
+
+## Diagnostics: bus counters and events
+
+This protocol has no acknowledgements: a malformed or unaddressed command is
+silently dropped, so on the wire a write either works or it doesn't, with no
+telemetry. To make bus health visible, the bus device exposes ten diagnostic
+counter sensors (all `total_increasing`, all under the diagnostic category).
+They reset to zero on integration restart by design; Home Assistant's long-term
+statistics treat a `total_increasing` reset correctly.
+
+Six count problems, and update immediately:
+
+| Counter | Counts | Points at |
+|---|---|---|
+| Parse errors | A complete line arrived but couldn't be parsed | Electrical noise, mis-termination, bus wiring |
+| Transport errors | Opening, reading, or writing the serial/TCP transport failed | USB cable, TCP gateway, serial port config |
+| Apply errors | A message parsed but updating state raised | Integration bug or an unexpected response format |
+| Unknown commands | A message parsed but the command code isn't one we handle | Firmware variant sending a field we don't model yet |
+| Verification failures | After a write, the device value didn't converge to what we wrote within five seconds | Write lost, filtered by hold/lockout, or rejected as out of range |
+| Query timeouts | A per-node query got no response from that node within two seconds | Node offline, interference, or a slot collision |
+
+Four are activity totals, useful as denominators for rate calculations. They
+increment far more often, so they refresh on Home Assistant's normal poll cycle
+rather than per-increment: Messages sent, Messages received, Verifications
+attempted, Queries sent.
+
+Separating parse from transport errors matters: "100 parse errors, 0 transport
+errors" implicates the bus wiring, while "0 parse, 100 transport" implicates the
+USB cable or TCP gateway.
+
+### Diagnostic events
+
+Each error increment also fires a Home Assistant event so automations and the
+logbook can react without polling a counter:
+
+| Event | Payload |
+|---|---|
+| `aprilaire_rs485_parse_error` | `detail`, `raw` (the offending line) |
+| `aprilaire_rs485_transport_error` | `detail` |
+| `aprilaire_rs485_apply_error` | `address`, `command`, `value`, `detail` |
+| `aprilaire_rs485_unknown_command` | `address`, `command`, `value` |
+| `aprilaire_rs485_write_verification_failed` | `address`, `command`, `expected`, `actual`, `detail` |
+| `aprilaire_rs485_query_timeout` | `address`, `deadline_seconds`, `last_seen_seconds_ago` |
+
+The `raw` field on a parse error is the exact line off the wire, handy for a bug
+report. The `expected` / `actual` on a verification failure show what the device
+held instead of what was written.
+
+### Deriving rates
+
+The raw counters pair with built-in Home Assistant helpers. Parse-error rate as
+a percentage of received messages:
+
+```yaml
+template:
+  - sensor:
+      - name: Aprilaire parse error rate
+        unit_of_measurement: "%"
+        state: >-
+          {% set e = states('sensor.aprilaire_8800_bus_parse_errors') | float(0) %}
+          {% set t = states('sensor.aprilaire_8800_bus_messages_received') | float(0) %}
+          {{ (e / t * 100) | round(3) if t > 0 else 0 }}
+```
+
+Per-minute throughput with the `derivative` helper:
+
+```yaml
+sensor:
+  - platform: derivative
+    source: sensor.aprilaire_8800_bus_messages_received
+    name: Aprilaire messages per minute
+    unit_time: min
+```
+
+Alert when a write didn't take:
+
+```yaml
+automation:
+  - alias: Aprilaire write was rejected
+    triggers:
+      - trigger: event
+        event_type: aprilaire_rs485_write_verification_failed
+    actions:
+      - action: notify.mobile_app_your_phone
+        data:
+          message: >-
+            Node {{ trigger.event.data.address }} {{ trigger.event.data.command }}:
+            wrote {{ trigger.event.data.expected }}, device held
+            {{ trigger.event.data.actual }}.
+```
+
+### Expected false positives
+
+A couple of cases count as failures without being broken hardware. They're worth
+knowing before you wire an alert to them:
+
+- A verification failure fires if someone physically changes the same setting on
+  the thermostat within the five-second window, or if a hold/lockout silently
+  rejects the write. The hold case is arguably a feature: it surfaces a write
+  that was refused.
+- Query timeouts cluster at refresh boundaries (queries fan out together, so any
+  timeouts do too), and a long or marginal bus can show one or two per minute as
+  baseline noise. A permanently-offline node generates one timeout per query, so
+  calibrate any alert against your own baseline rather than alerting on the first
+  nonzero reading.
 
 ## Outdoor temperature sharing
 

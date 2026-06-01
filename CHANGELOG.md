@@ -6,6 +6,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Bus diagnostic counters on the bus device: ten `total_increasing` sensors
+  covering parse errors, transport errors, apply errors, unknown commands,
+  write-verification failures, and query timeouts, plus activity totals
+  (messages sent, messages received, verifications attempted, queries sent).
+  Error counters refresh immediately on change; activity totals poll. All reset
+  to zero on restart by design.
+- Diagnostic events fired alongside each error counter so automations and the
+  logbook can react without polling: `aprilaire_rs485_parse_error`,
+  `aprilaire_rs485_transport_error`, `aprilaire_rs485_apply_error`,
+  `aprilaire_rs485_unknown_command`, `aprilaire_rs485_write_verification_failed`,
+  and `aprilaire_rs485_query_timeout`, each with a context payload.
+- Write verification: setpoint, mode, and fan writes are checked five seconds
+  later against the device's reported state, surfacing writes that were lost or
+  rejected by a hold/lockout (which the protocol otherwise drops silently).
+- Per-node query-timeout tracking: a per-node query with no response within two
+  seconds increments a counter and fires an event, making an unresponsive node
+  visible.
+
 ### Changed
 
 - The manifest `issue_tracker` now points to the GitLab issues page, where
