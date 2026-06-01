@@ -100,3 +100,37 @@ SIGNAL_NODE_UPDATED = "aprilaire_rs485_node_updated_{address}"
 # from SIGNAL_NODE_UPDATED to avoid waking the support-module entity
 # discovery logic on every routine value update.
 SIGNAL_NODE_SUPPORT_MODULES = "aprilaire_rs485_support_modules_{address}"
+
+# Dispatched whenever any of the six bus error counters increments, so the
+# diagnostic error-counter sensors refresh immediately. One shared signal for
+# all of them keeps each refresh cheap (a single attribute read) and avoids a
+# per-counter signal proliferation. The activity counters do not use this -
+# they increment too often, so they ride HA's normal poll cadence instead.
+SIGNAL_BUS_ERRORS_UPDATED = "aprilaire_rs485_bus_errors_updated"
+
+# HA event types fired alongside each error-counter increment, so automations
+# and the logbook can react without polling. Payload schemas:
+#   parse_error               -> {"detail": str, "raw": str | None}
+#   transport_error           -> {"detail": str}
+#   apply_error               -> {"address": int, "command": str,
+#                                 "value": str, "detail": str}
+#   unknown_command           -> {"address": int, "command": str, "value": str}
+#   write_verification_failed -> {"address": int, "command": str,
+#                                 "expected": str, "actual": str, "detail": str}
+#   query_timeout             -> {"address": int, "deadline_seconds": float,
+#                                 "last_seen_seconds_ago": float}
+EVENT_PARSE_ERROR = "aprilaire_rs485_parse_error"
+EVENT_TRANSPORT_ERROR = "aprilaire_rs485_transport_error"
+EVENT_APPLY_ERROR = "aprilaire_rs485_apply_error"
+EVENT_UNKNOWN_COMMAND = "aprilaire_rs485_unknown_command"
+EVENT_WRITE_VERIFICATION_FAILED = "aprilaire_rs485_write_verification_failed"
+EVENT_QUERY_TIMEOUT = "aprilaire_rs485_query_timeout"
+
+# How long after a verifiable write to check the device converged to the value
+# we wrote. Covers slot scheduling plus COS delivery latency, and is short
+# enough that a user physically changing the same setting within the window is
+# rare.
+VERIFICATION_DELAY_S = 5.0
+# How long after a per-node query to expect any message back from that node
+# before counting it a timeout. Roughly 8x the 9600-baud slot width (262 ms).
+QUERY_RESPONSE_TIMEOUT_S = 2.0

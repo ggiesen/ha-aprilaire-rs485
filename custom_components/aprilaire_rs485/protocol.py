@@ -75,6 +75,28 @@ _BARE_RESPONSE_PATTERNS = {
     "BLTON": re.compile(r"^BLTON$"),
 }
 
+# Bus error categories. Kept distinct because they implicate different
+# troubleshooting axes: a flood of parse errors points at the bus wiring
+# (noise, mis-termination), while transport errors implicate the USB cable,
+# TCP gateway, or serial server. Conflating them loses that signal.
+ERROR_PARSE = "parse_error"
+ERROR_TRANSPORT = "transport_error"
+
+
+@dataclass
+class BusError:
+    """A single error event from the protocol layer.
+
+    ``category`` is one of the ERROR_* constants above. ``detail`` is a
+    human-readable description suitable for logging or surfacing in an HA
+    event payload. ``raw`` is the offending bytes for parse errors, or None
+    for transport errors where there's no associated wire content.
+    """
+
+    category: str
+    detail: str
+    raw: str | None = None
+
 
 @dataclass
 class NodeMessage:
@@ -151,10 +173,23 @@ class Aprilaire8800Protocol:
 
         self._listeners: list[Callable[[NodeMessage], None]] = []
         self._raw_listeners: list[Callable[[str], None]] = []
+        self._error_listeners: list[Callable[[BusError], None]] = []
         self._listeners_lock = threading.Lock()
 
         self._last_tx_monotonic: float = 0.0
         self._last_tx_was_global_with_response: bool = False
+
+        # Diagnostic counters, incremented from the RX/TX threads. Plain ints
+        # need no lock - CPython's GIL makes ``int += 1`` atomic. parse_errors
+        # counts complete lines that failed to parse; transport_errors counts
+        # open/read/write failures. messages_received counts every line read
+        # (parsed or not), so parse_errors / messages_received is a meaningful
+        # ratio; messages_sent counts writes that landed on the wire (a failed
+        # write increments transport_errors instead).
+        self.parse_error_count: int = 0
+        self.transport_error_count: int = 0
+        self.messages_sent_count: int = 0
+        self.messages_received_count: int = 0
 
     # ---------- public API ----------
 
@@ -193,6 +228,38 @@ class Aprilaire8800Protocol:
         """Register a callback to receive every raw line for debug logging."""
         with self._listeners_lock:
             self._raw_listeners.append(cb)
+
+    def add_error_listener(self, cb: Callable[[BusError], None]) -> None:
+        """Register a callback to receive bus error events.
+
+        Listeners are invoked synchronously on the RX/TX thread when errors
+        happen, so they should be cheap and non-blocking. The coordinator
+        wires this to ``hass.loop.call_soon_threadsafe`` to marshal back onto
+        the event loop before doing anything HA-side.
+        """
+        with self._listeners_lock:
+            self._error_listeners.append(cb)
+
+    def remove_error_listener(self, cb: Callable[[BusError], None]) -> None:
+        """Deregister a previously-added error listener."""
+        with self._listeners_lock:
+            if cb in self._error_listeners:
+                self._error_listeners.remove(cb)
+
+    def _emit_error(self, error: BusError) -> None:
+        """Dispatch an error to registered listeners; never raises.
+
+        A listener exception here would either crash the thread or spam the
+        log on every error, both worse than swallowing the listener bug. We
+        log it at exception level for visibility but keep processing.
+        """
+        with self._listeners_lock:
+            listeners = list(self._error_listeners)
+        for cb in listeners:
+            try:
+                cb(error)
+            except Exception:
+                _LOGGER.exception("error listener failed")
 
     def start(self) -> None:
         """Start the RX and TX threads. Idempotent."""
@@ -304,6 +371,10 @@ class Aprilaire8800Protocol:
                 )
             except Exception as exc:
                 _LOGGER.warning("Failed to open %s: %s", self._url, exc)
+                self.transport_error_count += 1
+                self._emit_error(
+                    BusError(category=ERROR_TRANSPORT, detail=f"open failed: {exc}")
+                )
                 return False
             # If this is a TCP transport (pyserial's socket:// handler), pry
             # out the underlying socket and disable Nagle. Best-effort.
@@ -379,12 +450,20 @@ class Aprilaire8800Protocol:
                 ser.flush()
             except (serial.SerialException, OSError) as exc:
                 _LOGGER.warning("Write failed (%s): %s", item.description, exc)
+                self.transport_error_count += 1
+                self._emit_error(
+                    BusError(
+                        category=ERROR_TRANSPORT,
+                        detail=f"write failed ({item.description}): {exc}",
+                    )
+                )
                 self._close_transport()
                 # Don't requeue. HA will retry from current state on next user
                 # action or periodic refresh.
                 continue
 
             _LOGGER.debug("TX -> %s", item.description)
+            self.messages_sent_count += 1
             self._last_tx_monotonic = time.monotonic()
             self._last_tx_was_global_with_response = item.is_global and item.expect_response
             item.sent_event.set()
@@ -406,6 +485,10 @@ class Aprilaire8800Protocol:
                 chunk = ser.read(64)
             except (serial.SerialException, OSError) as exc:
                 _LOGGER.warning("Read failed: %s; will reconnect", exc)
+                self.transport_error_count += 1
+                self._emit_error(
+                    BusError(category=ERROR_TRANSPORT, detail=f"read failed: {exc}")
+                )
                 self._close_transport()
                 buf.clear()
                 if self._stop.wait(timeout=RECONNECT_BACKOFF_S):
@@ -438,6 +521,9 @@ class Aprilaire8800Protocol:
 
     def _dispatch_raw(self, line: str) -> None:
         _LOGGER.debug("RX <- %s", line)
+        # Count every successfully-read line before parsing, so lines that
+        # fail to parse still count toward the parse-error-rate denominator.
+        self.messages_received_count += 1
         with self._listeners_lock:
             raw_listeners = list(self._raw_listeners)
             listeners = list(self._listeners)
@@ -449,6 +535,10 @@ class Aprilaire8800Protocol:
         msg = parse_message(line)
         if msg is None:
             _LOGGER.debug("Unparseable: %s", line)
+            self.parse_error_count += 1
+            self._emit_error(
+                BusError(category=ERROR_PARSE, detail="unparseable line", raw=line)
+            )
             return
         for cb in listeners:
             try:

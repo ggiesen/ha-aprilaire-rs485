@@ -29,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -45,15 +46,27 @@ from .const import (
     COS_ENABLE,
     DEFAULT_REFRESH_INTERVAL_S,
     DOMAIN,
+    EVENT_APPLY_ERROR,
+    EVENT_PARSE_ERROR,
+    EVENT_QUERY_TIMEOUT,
+    EVENT_TRANSPORT_ERROR,
+    EVENT_UNKNOWN_COMMAND,
+    EVENT_WRITE_VERIFICATION_FAILED,
     MANUFACTURER,
     MODEL,
     OUTDOOR_TEMP_BROADCAST_INTERVAL_S,
+    QUERY_RESPONSE_TIMEOUT_S,
+    SIGNAL_BUS_ERRORS_UPDATED,
     SIGNAL_NODE_DISCOVERED,
     SIGNAL_NODE_SUPPORT_MODULES,
     SIGNAL_NODE_UPDATED,
+    VERIFICATION_DELAY_S,
 )
 from .protocol import (
+    ERROR_PARSE,
+    ERROR_TRANSPORT,
     Aprilaire8800Protocol,
+    BusError,
     NodeMessage,
     decode_errors,
     decode_humidity,
@@ -169,6 +182,53 @@ class NodeState:
     )
 
 
+# Command codes the thermostat may send us that we have explicit handling for
+# in _apply_to_state, plus the bare responses we knowingly ignore. Used by
+# _is_known_command to identify responses we DON'T recognise (which become
+# "unknown_command" events and increment the diagnostic counter).
+#
+# Audited against _apply_to_state: every branch there must appear here, or that
+# response false-positives as unknown on every occurrence. The test suite
+# enforces this (test_bus_counters). PRESENT (bare "SNn" discovery reply) and
+# BLTON (backlight) are knowingly-ignored responses with no state to apply, so
+# they're listed to avoid false positives even though _apply_to_state skips
+# them. RxSy responses (R1S1..R4S2) use computed names and are matched
+# dynamically in _is_known_command, not enumerated here.
+_KNOWN_RESPONSE_COMMANDS: frozenset[str] = frozenset(
+    {
+        # Sensor / control values
+        "T", "TEMP", "HUM", "OT", "R", "OH", "BIHUM", "RTS", "CT",
+        # Setpoints and deadband
+        "SH", "SC", "DBAND", "SHUM", "SDEH",
+        # Mode and fan
+        "M", "MODE", "F", "FAN",
+        # Hold and HVAC status
+        "HOLDSTAT", "HOLD", "HVAC", "H", "RECOVSTAT",
+        # Alarms, alarm periods, and errors
+        "FLTALM", "WPALM", "DEHALM", "SYSALM",
+        "FLTALMP", "WPALMP", "DEHALMP", "SYSALMP",
+        "ERROR",
+        # Identity / topology
+        "NAME", "ID", "RSM",
+        # Knowingly-ignored bare responses (no state applied).
+        "PRESENT", "BLTON",
+    }
+)
+
+
+def _is_known_command(cmd: str) -> bool:
+    """Return True if cmd is a response we know how to handle or ignore.
+
+    Returns False for genuinely unrecognised commands - either firmware
+    variants sending new fields, or protocol aspects we haven't added handlers
+    for. The coordinator increments unknown_command_count for any False result.
+    """
+    if cmd in _KNOWN_RESPONSE_COMMANDS:
+        return True
+    # RxSy responses use computed names (R1S1, R1S2, ..., R4S2).
+    return parse_rxsy_command(cmd) is not None
+
+
 class Aprilaire8800Coordinator:
     """Owns the protocol and per-node state.
 
@@ -212,6 +272,51 @@ class Aprilaire8800Coordinator:
         # removed; ordinary system power loss is held by the batteries).
         self._clock_sync = bool(clock_sync)
 
+        # Coordinator-side error counters. The protocol layer owns
+        # parse_error_count / transport_error_count / messages_* (incremented
+        # on the RX/TX thread); these two count errors detected here on the
+        # event loop. All counters reset to 0 on restart by design - HA's
+        # long-term statistics handles TOTAL_INCREASING resets correctly.
+        self.apply_error_count: int = 0
+        self.unknown_command_count: int = 0
+
+        # Write verification: every verifiable write schedules a task that,
+        # after VERIFICATION_DELAY_S, checks whether the device-side NodeState
+        # converged to what we wrote. Keyed by (address, command) so a newer
+        # write of the same command on the same node supersedes the older
+        # pending check.
+        self._pending_verifications: dict[tuple[int, str], asyncio.Task] = {}
+        self.verifications_attempted_count: int = 0
+        self.verification_failures_count: int = 0
+
+        # Per-node query timeouts: every per-node query schedules a check that,
+        # after QUERY_RESPONSE_TIMEOUT_S, uses node.last_seen_monotonic to
+        # decide whether the node responded at all. Stored as a self-pruning
+        # set (no supersession - each query gets its own verdict).
+        self._pending_query_checks: set[asyncio.Task] = set()
+        self.queries_sent_count: int = 0
+        self.query_timeouts_count: int = 0
+
+    @property
+    def parse_error_count(self) -> int:
+        """Proxy the protocol's parse-error counter to coordinator users."""
+        return self.protocol.parse_error_count
+
+    @property
+    def transport_error_count(self) -> int:
+        """Proxy the protocol's transport-error counter."""
+        return self.protocol.transport_error_count
+
+    @property
+    def messages_sent_count(self) -> int:
+        """Proxy the protocol's count of successfully-sent messages."""
+        return self.protocol.messages_sent_count
+
+    @property
+    def messages_received_count(self) -> int:
+        """Proxy the protocol's count of received lines (parsed or not)."""
+        return self.protocol.messages_received_count
+
     def device_info(self, address: int) -> DeviceInfo:
         """Return DeviceInfo for the given node address.
 
@@ -250,6 +355,10 @@ class Aprilaire8800Coordinator:
         """Open the bus and start discovery."""
         # Listener runs on the RX thread; bounce work onto the HA loop.
         self.protocol.add_listener(self._on_message_from_thread)
+        # Error listener is also invoked on the RX/TX thread. We bridge into
+        # the HA event loop to fire events and dispatch the signal that
+        # refreshes the error-counter sensors.
+        self.protocol.add_error_listener(self._on_protocol_error_from_thread)
         # Open the transport from an executor since pyserial does blocking I/O.
         await self.hass.async_add_executor_job(self.protocol.start)
         await self._async_discover()
@@ -290,6 +399,11 @@ class Aprilaire8800Coordinator:
         if self._clock_unsub is not None:
             self._clock_unsub()
             self._clock_unsub = None
+        # Cancel in-flight verification and query-timeout tasks so they don't
+        # fire spurious failure events as we tear down. They catch the
+        # CancelledError in their sleep and exit cleanly.
+        self._cancel_all_verifications()
+        self._cancel_all_query_checks()
         await self.hass.async_add_executor_job(self.protocol.stop)
 
     # ---------- discovery ----------
@@ -558,33 +672,263 @@ class Aprilaire8800Coordinator:
         await self.hass.async_add_executor_job(self.protocol.send, addr, cmd, value, False, True)
 
     async def _async_query(self, addr: int | None, cmd: str) -> None:
+        self.queries_sent_count += 1
         await self.hass.async_add_executor_job(self.protocol.send, addr, cmd, None, True, True)
+        # Broadcast queries (addr=None) ask "anyone there?" and would generate
+        # a timeout for every address with no thermostat. The bus node-count /
+        # addresses sensors already cover "is anything there at all", so we
+        # only track per-node queries.
+        if addr is None:
+            return
+        sent_at = time.monotonic()
+        task = self.hass.async_create_task(
+            self._check_query_response_after_delay(addr, sent_at)
+        )
+        self._pending_query_checks.add(task)
+        # Self-prune on completion so the set doesn't grow unboundedly.
+        task.add_done_callback(self._pending_query_checks.discard)
+
+    # ---------- write verification ----------
+    #
+    # Each verifiable write schedules a deferred check that the relevant
+    # NodeState attribute converged to what we wrote. The 8800 has no protocol
+    # ACK (a bad command is silently dropped), but it emits change-of-state on
+    # every change it actually applies, so "NodeState matches what we wrote,
+    # within the window" is a usable proxy for "the write took". False
+    # positives are possible (user turns the dial mid-window, or HOLD/lockout
+    # filters the write); both are rare or arguably worth surfacing.
+
+    def _register_verification(
+        self,
+        address: int,
+        command: str,
+        expected_repr: str,
+        check: Callable[[NodeState], tuple[bool, str]],
+    ) -> None:
+        """Schedule a deferred verification for a verifiable write.
+
+        ``check(node)`` returns ``(matches, actual_repr)``; the actual repr is
+        carried in the failure event so users see what the device held.
+        """
+        self.verifications_attempted_count += 1
+        key = (address, command)
+        # A newer write of the same command on the same node supersedes the
+        # older pending check: if both writes land, the device ends at the
+        # second value, which would make the first verification falsely fail.
+        existing = self._pending_verifications.pop(key, None)
+        if existing is not None and not existing.done():
+            existing.cancel()
+        task = self.hass.async_create_task(
+            self._verify_after_delay(address, command, expected_repr, check)
+        )
+        self._pending_verifications[key] = task
+
+    async def _verify_after_delay(
+        self,
+        address: int,
+        command: str,
+        expected_repr: str,
+        check: Callable[[NodeState], tuple[bool, str]],
+    ) -> None:
+        """Wait the verification window, then compare and report."""
+        await asyncio.sleep(VERIFICATION_DELAY_S)
+        # Remove ourselves before comparing so a re-registration during the
+        # check window won't try to cancel a task that's already finishing.
+        self._pending_verifications.pop((address, command), None)
+
+        node = self.nodes.get(address)
+        if node is None:
+            self._record_verification_failure(
+                address=address,
+                command=command,
+                expected=expected_repr,
+                actual="<node not in state>",
+                detail="node disappeared from coordinator state",
+            )
+            return
+
+        try:
+            matches, actual_repr = check(node)
+        except Exception as exc:
+            # A buggy check function shouldn't kill verification for other
+            # writes. Log and treat as a failure with detail.
+            _LOGGER.exception(
+                "Verification check for %s on node %d raised", command, address
+            )
+            self._record_verification_failure(
+                address=address,
+                command=command,
+                expected=expected_repr,
+                actual="<check error>",
+                detail=f"check function raised: {exc}",
+            )
+            return
+
+        if matches:
+            return  # Success - no event, no log spam.
+        self._record_verification_failure(
+            address=address,
+            command=command,
+            expected=expected_repr,
+            actual=actual_repr,
+            detail="value in state does not match what was written",
+        )
+
+    @callback
+    def _record_verification_failure(
+        self,
+        *,
+        address: int,
+        command: str,
+        expected: str,
+        actual: str,
+        detail: str,
+    ) -> None:
+        """Increment counter, fire event, dispatch the refresh signal."""
+        self.verification_failures_count += 1
+        self.hass.bus.async_fire(
+            EVENT_WRITE_VERIFICATION_FAILED,
+            {
+                "address": address,
+                "command": command,
+                "expected": expected,
+                "actual": actual,
+                "detail": detail,
+            },
+        )
+        async_dispatcher_send(self.hass, SIGNAL_BUS_ERRORS_UPDATED)
+        _LOGGER.warning(
+            "Write verification failed: node %d %s=%s, actual=%s (%s)",
+            address,
+            command,
+            expected,
+            actual,
+            detail,
+        )
+
+    def _cancel_all_verifications(self) -> None:
+        """Cancel any in-flight verification tasks (on shutdown)."""
+        for task in list(self._pending_verifications.values()):
+            if not task.done():
+                task.cancel()
+        self._pending_verifications.clear()
+
+    # Comparison helpers used by the registered check functions. Static so they
+    # can be unit-tested in isolation. Each returns (matches, actual_repr).
+
+    @staticmethod
+    def _check_setpoint(actual: float | None, expected: float) -> tuple[bool, str]:
+        """Compare a setpoint within 0.5-degree tolerance."""
+        if actual is None:
+            return False, "<unset>"
+        try:
+            return abs(float(actual) - float(expected)) < 0.5, str(actual)
+        except (TypeError, ValueError):
+            return False, str(actual)
+
+    @staticmethod
+    def _check_percent(actual: int | None, expected: int) -> tuple[bool, str]:
+        """Compare a humidity-percent setting (exact integer match)."""
+        if actual is None:
+            return False, "<unset>"
+        return int(actual) == int(expected), str(actual)
+
+    @staticmethod
+    def _check_string_ci(actual: str | None, expected: str) -> tuple[bool, str]:
+        """Compare a mode/fan string, case-insensitive."""
+        if actual is None:
+            return False, "<unset>"
+        return str(actual).upper() == str(expected).upper(), str(actual)
+
+    # ---------- query timeout ----------
+
+    async def _check_query_response_after_delay(self, addr: int, sent_at: float) -> None:
+        """Wait the query timeout window, then check for any response.
+
+        Compares ``node.last_seen_monotonic`` (set on every parsed message from
+        the node) against when we sent the query. Any message arriving since we
+        asked counts as responsive - the signal is "is this node alive on the
+        wire", not "did this exact query echo".
+        """
+        await asyncio.sleep(QUERY_RESPONSE_TIMEOUT_S)
+        node = self.nodes.get(addr)
+        if node is None or node.last_seen_monotonic is None:
+            # Never seen this node respond at all. Don't fire - this would spam
+            # during discovery and for configured addresses that never came up.
+            return
+        if node.last_seen_monotonic >= sent_at:
+            return  # Some response arrived in the window.
+
+        self.query_timeouts_count += 1
+        since_last = time.monotonic() - node.last_seen_monotonic
+        self.hass.bus.async_fire(
+            EVENT_QUERY_TIMEOUT,
+            {
+                "address": addr,
+                "deadline_seconds": QUERY_RESPONSE_TIMEOUT_S,
+                "last_seen_seconds_ago": round(since_last, 1),
+            },
+        )
+        async_dispatcher_send(self.hass, SIGNAL_BUS_ERRORS_UPDATED)
+        _LOGGER.warning(
+            "Query to node %d timed out after %.1fs (last seen %.1fs ago)",
+            addr,
+            QUERY_RESPONSE_TIMEOUT_S,
+            since_last,
+        )
+
+    def _cancel_all_query_checks(self) -> None:
+        """Cancel any in-flight query timeout checks (on shutdown)."""
+        for task in list(self._pending_query_checks):
+            if not task.done():
+                task.cancel()
+        self._pending_query_checks.clear()
 
     # ---------- public write API for platforms ----------
 
     async def async_set_mode(self, addr: int, mode: str) -> None:
         """Set the system mode of the given node."""
         await self._async_send(addr, "M", mode)
+        self._register_verification(
+            addr, "M", mode, lambda n: self._check_string_ci(n.mode, mode)
+        )
 
     async def async_set_fan(self, addr: int, fan: str) -> None:
         """Set the fan mode of the given node."""
         await self._async_send(addr, "F", fan)
+        self._register_verification(
+            addr, "F", fan, lambda n: self._check_string_ci(n.fan_mode, fan)
+        )
 
     async def async_set_heat_setpoint(self, addr: int, value: float) -> None:
         """Set the heat setpoint of the given node."""
-        await self._async_send(addr, "SH", _format_setpoint(value))
+        formatted = _format_setpoint(value)
+        await self._async_send(addr, "SH", formatted)
+        self._register_verification(
+            addr, "SH", formatted, lambda n: self._check_setpoint(n.setpoint_heat, value)
+        )
 
     async def async_set_cool_setpoint(self, addr: int, value: float) -> None:
         """Set the cool setpoint of the given node."""
-        await self._async_send(addr, "SC", _format_setpoint(value))
+        formatted = _format_setpoint(value)
+        await self._async_send(addr, "SC", formatted)
+        self._register_verification(
+            addr, "SC", formatted, lambda n: self._check_setpoint(n.setpoint_cool, value)
+        )
 
     async def async_set_humid_setpoint(self, addr: int, percent: int) -> None:
         """Set the humidification setpoint of the given node."""
         await self._async_send(addr, "SHUM", f"{percent}")
+        self._register_verification(
+            addr, "SHUM", str(percent), lambda n: self._check_percent(n.setpoint_humid, percent)
+        )
 
     async def async_set_dehum_setpoint(self, addr: int, percent: int) -> None:
         """Set the dehumidification setpoint of the given node."""
         await self._async_send(addr, "SDEH", f"{percent}")
+        self._register_verification(
+            addr, "SDEH", str(percent), lambda n: self._check_percent(n.setpoint_dehum, percent)
+        )
 
     async def async_clear_hold(self, addr: int) -> None:
         """Clear any active schedule hold on the given node."""
@@ -671,6 +1015,27 @@ class Aprilaire8800Coordinator:
         with contextlib.suppress(RuntimeError):
             self.hass.loop.call_soon_threadsafe(self._handle_message, msg)
 
+    def _on_protocol_error_from_thread(self, err: BusError) -> None:
+        """Bounce a protocol error from the RX/TX thread onto the HA loop.
+
+        The protocol-object counter was already incremented by the time this
+        runs; here we just fire the corresponding HA event and dispatch the
+        refresh signal so the error-counter sensors update.
+        """
+        with contextlib.suppress(RuntimeError):
+            self.hass.loop.call_soon_threadsafe(self._handle_protocol_error, err)
+
+    @callback
+    def _handle_protocol_error(self, err: BusError) -> None:
+        """Fire the appropriate HA event for a protocol-layer error."""
+        if err.category == ERROR_PARSE:
+            self.hass.bus.async_fire(
+                EVENT_PARSE_ERROR, {"detail": err.detail, "raw": err.raw}
+            )
+        elif err.category == ERROR_TRANSPORT:
+            self.hass.bus.async_fire(EVENT_TRANSPORT_ERROR, {"detail": err.detail})
+        async_dispatcher_send(self.hass, SIGNAL_BUS_ERRORS_UPDATED)
+
     @callback
     def _handle_message(self, msg: NodeMessage) -> None:
         node = self.nodes.get(msg.address)
@@ -680,14 +1045,42 @@ class Aprilaire8800Coordinator:
             self.nodes[msg.address] = node
         if msg.name and not node.name:
             node.name = msg.name
+        # Record liveness on every parsed message from this node, before
+        # applying state, so even a message that triggers an apply error still
+        # counts as evidence the node is alive on the wire. The query-timeout
+        # check depends on this line; without it, timeouts never fire.
+        node.last_seen_monotonic = time.monotonic()
 
         cmd = msg.command
         val = msg.value or ""
 
+        # An unrecognised command isn't necessarily an error - it may just be a
+        # response we haven't added a handler for - but counting it and surfacing
+        # it as a diagnostic gives users visibility into "your firmware sends us
+        # something we don't understand", the first signal to add support.
+        if not _is_known_command(cmd):
+            self.unknown_command_count += 1
+            self.hass.bus.async_fire(
+                EVENT_UNKNOWN_COMMAND,
+                {"address": msg.address, "command": cmd, "value": val},
+            )
+            async_dispatcher_send(self.hass, SIGNAL_BUS_ERRORS_UPDATED)
+
         try:
             self._apply_to_state(node, cmd, val)
-        except Exception:
+        except Exception as exc:
             _LOGGER.exception("Failed applying %s=%s to node %d", cmd, val, msg.address)
+            self.apply_error_count += 1
+            self.hass.bus.async_fire(
+                EVENT_APPLY_ERROR,
+                {
+                    "address": msg.address,
+                    "command": cmd,
+                    "value": val,
+                    "detail": str(exc),
+                },
+            )
+            async_dispatcher_send(self.hass, SIGNAL_BUS_ERRORS_UPDATED)
 
         if new_node:
             async_dispatcher_send(self.hass, SIGNAL_NODE_DISCOVERED, msg.address)

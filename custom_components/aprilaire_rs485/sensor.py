@@ -37,6 +37,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
     DOMAIN,
+    SIGNAL_BUS_ERRORS_UPDATED,
     SIGNAL_NODE_DISCOVERED,
     SIGNAL_NODE_SUPPORT_MODULES,
     SIGNAL_NODE_UPDATED,
@@ -209,13 +210,20 @@ async def async_setup_entry(
         async_dispatcher_connect(hass, SIGNAL_NODE_DISCOVERED, _subscribe_support_modules)
     )
 
-    # Bus-level sensors: created once per config entry.
-    async_add_entities(
-        [
-            Aprilaire8800BusCountSensor(coordinator),
-            Aprilaire8800BusAddressesSensor(coordinator),
-        ]
-    )
+    # Bus-level sensors: created once per config entry. The diagnostic
+    # counters are split into error counters (event-driven refresh on the
+    # SIGNAL_BUS_ERRORS_UPDATED signal, since errors are rare and worth seeing
+    # immediately) and activity counters (poll-based, since they increment too
+    # often for per-event dispatch to be worthwhile).
+    bus_entities: list[SensorEntity] = [
+        Aprilaire8800BusCountSensor(coordinator),
+        Aprilaire8800BusAddressesSensor(coordinator),
+    ]
+    for category, attr_name in _BUS_ERROR_COUNTERS:
+        bus_entities.append(Aprilaire8800BusCounter(coordinator, category, attr_name, poll=False))
+    for category, attr_name in _BUS_ACTIVITY_COUNTERS:
+        bus_entities.append(Aprilaire8800BusCounter(coordinator, category, attr_name, poll=True))
+    async_add_entities(bus_entities)
 
 
 class Aprilaire8800Sensor(SensorEntity):
@@ -444,6 +452,89 @@ class Aprilaire8800SupportModuleSensor(SensorEntity):
             async_dispatcher_connect(
                 self.hass,
                 SIGNAL_NODE_UPDATED.format(address=self._address),
+                self.async_write_ha_state,
+            )
+        )
+
+
+# Bus diagnostic counters. Each tuple is (translation-key suffix, coordinator
+# attribute). Error counters refresh on SIGNAL_BUS_ERRORS_UPDATED (rare, want
+# them visible fast); activity counters poll (they increment too often to
+# dispatch on each one). Keep in sync with the coordinator counters and with
+# the translation keys in strings.json / translations/en.json.
+_BUS_ERROR_COUNTERS: tuple[tuple[str, str], ...] = (
+    ("parse_errors", "parse_error_count"),
+    ("transport_errors", "transport_error_count"),
+    ("apply_errors", "apply_error_count"),
+    ("unknown_commands", "unknown_command_count"),
+    ("verification_failures", "verification_failures_count"),
+    ("query_timeouts", "query_timeouts_count"),
+)
+_BUS_ACTIVITY_COUNTERS: tuple[tuple[str, str], ...] = (
+    ("messages_sent", "messages_sent_count"),
+    ("messages_received", "messages_received_count"),
+    ("verifications_attempted", "verifications_attempted_count"),
+    ("queries_sent", "queries_sent_count"),
+)
+
+
+class Aprilaire8800BusCounter(SensorEntity):
+    """A diagnostic counter for one bus-level reliability metric.
+
+    Ten are created: six error counters (parse/transport/apply/unknown,
+    verification failures, query timeouts) and four activity totals (messages
+    sent/received, verifications attempted, queries sent). All are monotonic
+    within a session and reset to zero on integration restart; HA's
+    TOTAL_INCREASING state class treats a reset as a new counting period rather
+    than a negative delta, so long-term statistics stay correct.
+
+    Error counters refresh on the SIGNAL_BUS_ERRORS_UPDATED dispatcher signal
+    (errors are rare and worth seeing immediately); activity counters poll on
+    HA's default cadence (they increment too often for per-event dispatch to be
+    worthwhile, and the long-term-statistics window is 5 minutes regardless).
+
+    ``category`` is the translation-key suffix (e.g. "parse_errors"); it must
+    match a key in strings.json. ``attr_name`` is the coordinator attribute
+    holding the count (e.g. "parse_error_count").
+    """
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_has_entity_name = True
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+
+    def __init__(
+        self,
+        coordinator: Aprilaire8800Coordinator,
+        category: str,
+        attr_name: str,
+        *,
+        poll: bool = False,
+    ) -> None:
+        """Initialise one counter for one category."""
+        self._coordinator = coordinator
+        self._counter_attr = attr_name
+        self._attr_unique_id = f"{DOMAIN}_bus_{category}"
+        self._attr_translation_key = f"bus_{category}"
+        self._attr_device_info = coordinator.bus_device_info()
+        self._attr_should_poll = poll
+
+    @property
+    def native_value(self) -> int:
+        """Return the current value of this category's counter."""
+        return getattr(self._coordinator, self._counter_attr)
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to the bus-errors signal for event-driven refresh.
+
+        Polled counters ride HA's poll cycle and don't subscribe - doing so
+        would just cause redundant state writes.
+        """
+        if self._attr_should_poll:
+            return
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                SIGNAL_BUS_ERRORS_UPDATED,
                 self.async_write_ha_state,
             )
         )
