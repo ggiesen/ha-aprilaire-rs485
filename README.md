@@ -219,7 +219,7 @@ Six count problems, and update immediately:
 
 | Counter | Counts | Points at |
 |---|---|---|
-| Parse errors | A complete line arrived but couldn't be parsed | Electrical noise, mis-termination, bus wiring |
+| Parse errors | A complete line arrived but couldn't be parsed | Electrical noise or a wiring/connection problem on the bus |
 | Transport errors | Opening, reading, or writing the serial/TCP transport failed | USB cable, TCP gateway, serial port config |
 | Apply errors | A message parsed but updating state raised | Integration bug or an unexpected response format |
 | Unknown commands | A response arrived whose command code isn't in the 8800 command set | Off-protocol traffic, or a firmware variant with a command not in the Programmer's Manual |
@@ -431,14 +431,18 @@ python cli_test.py /dev/ttyUSB0 --addr 1 --cmd SH --value 68
 ```
 
 If `--discover` finds nothing, check (roughly in order) the gateway wiring mode
-(must be 4-wire), A/B pair polarity, bus termination, baud rate, and the
-port/URL. A 2-wire half-duplex gateway cannot work and must be replaced.
+(must be 4-wire), A/B pair polarity, baud rate, and the port/URL. A 2-wire
+half-duplex gateway cannot work and must be replaced.
 
 ## Wiring notes
 
-- **Termination and biasing**: RS-485/422 wants 120 ohm termination at the ends
-  of each pair and bias resistors at the host. Without termination on a long
-  run, corrupted bytes appear and the affected responses are dropped.
+- **Cabling**: use Category-5 (the Aprilaire spec), up to about 4000 ft
+  cumulative at 9600 baud. The 8811 adapter and 8819 distribution panel form a
+  switched-stub bus that needs no end-of-line termination or bias resistors --
+  at 9600 baud reflections settle well within a bit time, and the 8819 install
+  guide calls for neither. A marginal connection or a run near HVAC equipment
+  tends to show up as a node going silent (dropped responses) rather than as
+  corrupted bytes.
 - **Timing**: the integration does its serial I/O on a dedicated thread and
   spaces transmissions per the manual. At 19200 baud the timing windows are
   half the size, so a marginal cable that works at 9600 may not.

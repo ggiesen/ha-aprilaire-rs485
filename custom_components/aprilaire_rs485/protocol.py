@@ -77,8 +77,8 @@ _BARE_RESPONSE_PATTERNS = {
 
 # Bus error categories. Kept distinct because they implicate different
 # troubleshooting axes: a flood of parse errors points at the bus wiring
-# (noise, mis-termination), while transport errors implicate the USB cable,
-# TCP gateway, or serial server. Conflating them loses that signal.
+# (noise or a marginal connection), while transport errors implicate the USB
+# cable, TCP gateway, or serial server. Conflating them loses that signal.
 ERROR_PARSE = "parse_error"
 ERROR_TRANSPORT = "transport_error"
 

@@ -16,6 +16,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   unimplemented pending hardware to validate against; `const.COMMANDS_NOT_ON_8870`
   records the gap and `_async_initial_query` marks the seam.
 
+### Changed
+
+- Removed the incorrect 120-ohm bus-termination guidance from the docs. The
+  Aprilaire 8811 adapter and 8819 distribution panel form a switched-stub
+  Category-5 bus that the 8819 installation guide specifies with no end-of-line
+  termination or bias resistors (at 9600 baud reflections settle well within a
+  bit time). The wiring notes now describe cabling accurately, and the
+  parse-error troubleshooting hint no longer cites mis-termination.
+
 ## [0.2.0] - 2026-06-01
 
 ### Added
