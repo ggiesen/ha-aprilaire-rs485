@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-01
+
 ### Added
 
 - Bus diagnostic counters on the bus device: ten `total_increasing` sensors
@@ -162,6 +164,7 @@ First public release.
   (filtered to temperature sensors plus weather and climate entities) instead
   of a free-text entity_id field.
 
-[Unreleased]: https://github.com/ggiesen/ha-aprilaire-rs485/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/ggiesen/ha-aprilaire-rs485/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/ggiesen/ha-aprilaire-rs485/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/ggiesen/ha-aprilaire-rs485/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/ggiesen/ha-aprilaire-rs485/releases/tag/v0.1.0
