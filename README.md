@@ -222,9 +222,9 @@ Six count problems, and update immediately:
 | Parse errors | A complete line arrived but couldn't be parsed | Electrical noise, mis-termination, bus wiring |
 | Transport errors | Opening, reading, or writing the serial/TCP transport failed | USB cable, TCP gateway, serial port config |
 | Apply errors | A message parsed but updating state raised | Integration bug or an unexpected response format |
-| Unknown commands | A message parsed but the command code isn't one we handle | Firmware variant sending a field we don't model yet |
-| Verification failures | After a write, the device value didn't converge to what we wrote within five seconds | Write lost, filtered by hold/lockout, or rejected as out of range |
-| Query timeouts | A per-node query got no response from that node within two seconds | Node offline, interference, or a slot collision |
+| Unknown commands | A response arrived whose command code isn't in the 8800 command set | Off-protocol traffic, or a firmware variant with a command not in the Programmer's Manual |
+| Verification failures | After a write, the device value didn't converge to what we wrote within five seconds | Write lost, filtered by hold/lockout, or rejected out of range |
+| Query timeouts | A node went unresponsive (a per-node query got no reply within two seconds, and the node wasn't already flagged unresponsive) | Node offline, interference, or a slot collision. Counts unresponsive *episodes*, not individual queries |
 
 Four are activity totals, useful as denominators for rate calculations. They
 increment far more often, so they refresh on Home Assistant's normal poll cycle
@@ -237,8 +237,9 @@ USB cable or TCP gateway.
 
 ### Diagnostic events
 
-Each error increment also fires a Home Assistant event so automations and the
-logbook can react without polling a counter:
+Each error fires a Home Assistant event so automations and the logbook can
+react without polling a counter. A node going unresponsive fires
+`query_timeout` once, and answering again fires `query_recovered`:
 
 | Event | Payload |
 |---|---|
@@ -248,6 +249,7 @@ logbook can react without polling a counter:
 | `aprilaire_rs485_unknown_command` | `address`, `command`, `value` |
 | `aprilaire_rs485_write_verification_failed` | `address`, `command`, `expected`, `actual`, `detail` |
 | `aprilaire_rs485_query_timeout` | `address`, `deadline_seconds`, `last_seen_seconds_ago` |
+| `aprilaire_rs485_query_recovered` | `address`, `unresponsive_seconds` |
 
 The `raw` field on a parse error is the exact line off the wire, handy for a bug
 report. The `expected` / `actual` on a verification failure show what the device
@@ -305,11 +307,12 @@ knowing before you wire an alert to them:
   the thermostat within the five-second window, or if a hold/lockout silently
   rejects the write. The hold case is arguably a feature: it surfaces a write
   that was refused.
-- Query timeouts cluster at refresh boundaries (queries fan out together, so any
-  timeouts do too), and a long or marginal bus can show one or two per minute as
-  baseline noise. A permanently-offline node generates one timeout per query, so
-  calibrate any alert against your own baseline rather than alerting on the first
-  nonzero reading.
+- A query timeout counts an unresponsive *episode*, not each unanswered query:
+  one increment and one `query_timeout` event when a node stops answering, and
+  a `query_recovered` event when it answers again. An intermittently-slow node
+  therefore shows up as a handful of episodes rather than dozens of per-query
+  timeouts. A marginal bus can still log the odd episode; calibrate alerts
+  against your own baseline rather than the first nonzero reading.
 
 ## Outdoor temperature sharing
 

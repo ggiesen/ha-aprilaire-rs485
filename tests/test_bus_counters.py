@@ -348,6 +348,45 @@ def test_is_known_command_recognises_cos_acknowledgements(is_known) -> None:
         assert is_known(code), f"COS-enable ack {code} should be recognised"
 
 
+def test_is_known_command_recognises_all_cos_report_codes(is_known) -> None:
+    """Every command code a COS report can carry is recognised.
+
+    These are the short-form codes from the manual's Change-of-State table
+    (p.18-19), i.e. the codes that arrive *unsolicited* when state changes on
+    the thermostat. PROGFMT/EVTSDAY (C13 setup change) and PROGUPDT (C16
+    schedule change) are the ones reactive testing never triggered; this test
+    is the regression guard so the manual-derived allow-list keeps covering
+    them.
+    """
+    cos_report_codes = (
+        "H",                              # C1 relays
+        "T", "HUM",                       # C2
+        "OT", "OH",                       # C3
+        "SH", "SC", "SHUM", "SDEH",       # C5 setpoints
+        "HOLD",                           # C6
+        "M",                              # C7
+        "F",                              # C8
+        "TIME", "DATE", "PROGFMT", "EVTSDAY",  # C13 setup
+        "FLTALM", "WPALM", "DEHALM", "SYSALM",  # C14 alarms
+        "RECOVSTAT",                      # C15
+        "PROGUPDT",                       # C16 schedule
+        "HOLDSTAT",                       # C17
+        "ERROR",                          # C19
+    )
+    for code in cos_report_codes:
+        assert is_known(code), f"COS report code {code} should be recognised"
+
+
+def test_is_known_command_recognises_hold_commands(is_known) -> None:
+    """The hold write/status commands (PERMHOLD/VACHOLD/TEMPHOLD) are known.
+
+    PERMHOLD in particular is one we write (permanent-hold toggle) and whose
+    echo would otherwise read as unknown.
+    """
+    for code in ("PERMHOLD", "VACHOLD", "TEMPHOLD"):
+        assert is_known(code), f"{code} should be recognised"
+
+
 def test_apply_to_state_branches_all_in_allowlist(is_known) -> None:
     """Audit: every command literal handled in _apply_to_state is recognised.
 
@@ -1181,3 +1220,95 @@ async def test_query_with_response_before_check_completes(
 
     assert events == []
     assert coord.query_timeouts_count == 0
+
+
+async def test_query_timeout_counts_one_episode_not_per_query(
+    hass, coord, monkeypatch
+) -> None:
+    """A silent node hit by a burst of queries yields ONE timeout, not one each.
+
+    This is the transition-based behaviour: the counter and event fire once
+    when the node goes unresponsive, not on every unanswered query in a refresh
+    burst.
+    """
+    import asyncio as _asyncio  # noqa: PLC0415
+    import time as _time  # noqa: PLC0415
+
+    from custom_components.aprilaire_rs485 import (  # noqa: PLC0415
+        coordinator as coord_module,
+    )
+    from custom_components.aprilaire_rs485.const import (  # noqa: PLC0415
+        EVENT_QUERY_TIMEOUT,
+    )
+    from custom_components.aprilaire_rs485.coordinator import (  # noqa: PLC0415
+        NodeState,
+    )
+
+    monkeypatch.setattr(coord_module, "QUERY_RESPONSE_TIMEOUT_S", 0.05)
+    events: list = []
+    hass.bus.async_listen(EVENT_QUERY_TIMEOUT, events.append)
+
+    coord.nodes[1] = NodeState(address=1, last_seen_monotonic=_time.monotonic() - 30.0)
+    for _ in range(5):
+        await coord._async_query(1, "T")
+    await _asyncio.sleep(0.15)
+    await hass.async_block_till_done()
+
+    assert coord.queries_sent_count == 5
+    assert coord.query_timeouts_count == 1  # one episode, not five
+    assert len(events) == 1
+    assert 1 in coord._node_unresponsive_since
+
+
+async def test_query_recovery_event_and_fresh_episode(
+    hass, coord, monkeypatch
+) -> None:
+    """Going silent then answering fires timeout then recovery; later silence
+    is a new episode."""
+    import asyncio as _asyncio  # noqa: PLC0415
+    import time as _time  # noqa: PLC0415
+
+    from protocol import NodeMessage  # noqa: PLC0415
+
+    from custom_components.aprilaire_rs485 import (  # noqa: PLC0415
+        coordinator as coord_module,
+    )
+    from custom_components.aprilaire_rs485.const import (  # noqa: PLC0415
+        EVENT_QUERY_RECOVERED,
+        EVENT_QUERY_TIMEOUT,
+    )
+    from custom_components.aprilaire_rs485.coordinator import (  # noqa: PLC0415
+        NodeState,
+    )
+
+    monkeypatch.setattr(coord_module, "QUERY_RESPONSE_TIMEOUT_S", 0.05)
+    timeouts: list = []
+    recoveries: list = []
+    hass.bus.async_listen(EVENT_QUERY_TIMEOUT, timeouts.append)
+    hass.bus.async_listen(EVENT_QUERY_RECOVERED, recoveries.append)
+
+    coord.nodes[1] = NodeState(address=1, last_seen_monotonic=_time.monotonic() - 30.0)
+    # First silent stretch -> one timeout episode.
+    await coord._async_query(1, "T")
+    await _asyncio.sleep(0.15)
+    await hass.async_block_till_done()
+    assert coord.query_timeouts_count == 1
+    assert 1 in coord._node_unresponsive_since
+
+    # A message arrives -> recovery event, episode ends.
+    coord._handle_message(
+        NodeMessage(address=1, command="T", value="72F", name=None, raw="")
+    )
+    await hass.async_block_till_done()
+    assert len(recoveries) == 1
+    assert recoveries[0].data["address"] == 1
+    assert "unresponsive_seconds" in recoveries[0].data
+    assert 1 not in coord._node_unresponsive_since
+
+    # Goes silent again -> a fresh episode.
+    coord.nodes[1].last_seen_monotonic = _time.monotonic() - 30.0
+    await coord._async_query(1, "T")
+    await _asyncio.sleep(0.15)
+    await hass.async_block_till_done()
+    assert coord.query_timeouts_count == 2
+    assert len(timeouts) == 2

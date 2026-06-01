@@ -119,12 +119,16 @@ SIGNAL_BUS_ERRORS_UPDATED = "aprilaire_rs485_bus_errors_updated"
 #                                 "expected": str, "actual": str, "detail": str}
 #   query_timeout             -> {"address": int, "deadline_seconds": float,
 #                                 "last_seen_seconds_ago": float}
+#   query_recovered           -> {"address": int, "unresponsive_seconds": float}
+# query_timeout fires once when a node transitions to unresponsive (not per
+# query); query_recovered fires when it answers again.
 EVENT_PARSE_ERROR = "aprilaire_rs485_parse_error"
 EVENT_TRANSPORT_ERROR = "aprilaire_rs485_transport_error"
 EVENT_APPLY_ERROR = "aprilaire_rs485_apply_error"
 EVENT_UNKNOWN_COMMAND = "aprilaire_rs485_unknown_command"
 EVENT_WRITE_VERIFICATION_FAILED = "aprilaire_rs485_write_verification_failed"
 EVENT_QUERY_TIMEOUT = "aprilaire_rs485_query_timeout"
+EVENT_QUERY_RECOVERED = "aprilaire_rs485_query_recovered"
 
 # How long after a verifiable write to check the device converged to the value
 # we wrote. Covers slot scheduling plus COS delivery latency, and is short

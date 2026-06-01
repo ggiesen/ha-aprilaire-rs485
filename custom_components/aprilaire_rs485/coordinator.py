@@ -48,6 +48,7 @@ from .const import (
     DOMAIN,
     EVENT_APPLY_ERROR,
     EVENT_PARSE_ERROR,
+    EVENT_QUERY_RECOVERED,
     EVENT_QUERY_TIMEOUT,
     EVENT_TRANSPORT_ERROR,
     EVENT_UNKNOWN_COMMAND,
@@ -182,59 +183,63 @@ class NodeState:
     )
 
 
-# The device echoes every change-of-state-enable write back as an
-# acknowledgement ("SNx C1=ON", "SNx CP=1"), once per node each time we apply
-# COS - which is every periodic refresh. They carry no state we need, but they
-# are expected responses, so they belong on the allow-list (otherwise they
-# dominate the unknown-command counter: they were always arriving, just
-# silently ignored by _apply_to_state until the counter made them visible).
-# These mirror COS_ENABLE (plus the CP pattern write). Listed as literals
-# rather than derived from COS_ENABLE so this block stays self-contained for
-# the source-slicing test loaders; test_bus_counters iterates COS_ENABLE and
-# asserts each appears here, so the two can't silently drift.
-_COS_ACK_COMMANDS: frozenset[str] = frozenset(
-    {
-        "CP",
-        "C1", "C2", "C3", "C5", "C6", "C7", "C8",
-        "C13", "C14", "C15", "C16", "C17", "C19",
-    }
-)
-
-# Command codes the thermostat may send us that we have explicit handling for
-# in _apply_to_state, plus the responses we knowingly ignore (COS acks and the
-# bare PRESENT/BLTON replies). Used by _is_known_command to identify responses
-# we DON'T recognise (which become "unknown_command" events and increment the
-# diagnostic counter).
+# Every command code the 8800 can send us, taken from the Programmer's Manual
+# (RPC P/N 10009414) "Commands Table of Contents". A node message is always
+# either an echo of a host command or an unsolicited change-of-state report,
+# and the manual's COS table confirms COS uses the short-form command code, so
+# the full command vocabulary below is the complete set of codes we can
+# legitimately receive. _is_known_command treats anything outside it as a
+# genuine unknown (off-protocol or a firmware variant) - the signal worth
+# surfacing; in-protocol codes we don't act on are simply ignored by
+# _apply_to_state. Deriving the list from the manual rather than from observed
+# traffic is deliberate: COS codes such as PROGFMT, EVTSDAY (C13 setup change)
+# and PROGUPDT (C16 schedule change) only arrive when a setting changes on the
+# thermostat, which reactive testing misses.
 #
-# Audited against _apply_to_state: every branch there must appear here, or that
-# response false-positives as unknown on every occurrence. The test suite
-# enforces this (test_bus_counters). PRESENT (bare "SNn" discovery reply) and
-# BLTON (backlight) are knowingly-ignored responses with no state to apply, so
-# they're listed to avoid false positives even though _apply_to_state skips
-# them. RxSy responses (R1S1..R4S2) use computed names and are matched
-# dynamically in _is_known_command, not enumerated here.
+# Increment/decrement variants (SH++/SH--/...) and the schedule write commands
+# (PROGDxEy, COPYDx) are host->node only and never come back as node message
+# codes, so they're omitted. RxSy sensor reads use computed names (R1S1..R4S2)
+# and are matched dynamically in _is_known_command. PRESENT is our synthetic
+# name for the bare "SNn" reply to the global <NULL> connected-nodes query.
 _KNOWN_RESPONSE_COMMANDS: frozenset[str] = frozenset(
     {
-        # Sensor / control values
-        "T", "TEMP", "HUM", "OT", "R", "OH", "BIHUM", "RTS", "CT",
-        # Setpoints and deadband
-        "SH", "SC", "DBAND", "SHUM", "SDEH",
-        # Mode and fan
-        "M", "MODE", "F", "FAN",
-        # Hold and HVAC status
-        "HOLDSTAT", "HOLD", "HVAC", "H", "RECOVSTAT",
-        # Alarms, alarm periods, and errors
-        "FLTALM", "WPALM", "DEHALM", "SYSALM",
-        "FLTALMP", "WPALMP", "DEHALMP", "SYSALMP",
-        "ERROR",
-        # Identity / topology
-        "NAME", "ID", "RSM",
-        # Knowingly-ignored responses with no state to apply: the bare PRESENT/
-        # BLTON replies, and the echoes of the clock-sync writes (TIME/DATE),
-        # which the device acks back the same way it acks the COS-enable writes.
-        "PRESENT", "BLTON", "TIME", "DATE",
+        # Thermostat configuration (manual p.8-14)
+        "EQUIPCONFIG", "EQUIP", "CT",
+        "DIF1", "DIF2", "DIF3", "DIF4",
+        "EXTFAN", "INTEGRAL", "AUTOM", "EQONTIME", "HOFFTIME", "COFFTIME",
+        "ACHGTIME", "DBAND", "RECOV", "HIBP", "LOBP", "OFFSET",
+        # Communication control (p.15-17)
+        "NETAD", "NETST", "BAUD", "ID", "NAME", "CR",
+        # Change-of-state report control (p.18-19): the pattern select plus the
+        # 19 category toggles. The device echoes each as an ack on every apply.
+        "CP",
+        "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10",
+        "C11", "C12", "C13", "C14", "C15", "C16", "C17", "C18", "C19",
+        # Setup (p.20-24)
+        "SCALE", "TIME", "DATE", "PROGFMT", "EVTCFG", "EVTSDAY", "DLS",
+        "BLTLVL", "CONSTBLT", "BLTON",
+        # Alarms (p.25-26)
+        "FLTALMP", "FLTALM", "WPALMP", "WPALM", "HUMTYP",
+        "DEHALMP", "DEHALM", "SYSALMP", "SYSALM",
+        # Lockout (p.27-30)
+        "FANLK", "MODELK", "NETLK", "UPDNLK", "LKTIME", "LKLIMIT", "PIN",
+        # Sensors (p.31-35)
+        "TEMP", "T", "HUM", "RSM", "OT", "R", "OH", "BIHUM", "RTS",
+        # Temperature control (p.36-42)
+        "MODE", "M", "FAN", "F", "SH", "SC", "S",
+        # Humidity control (p.44-45)
+        "SHUM", "SDEH",
+        # Program and schedule (p.49-51); the per-event/copy writes are
+        # host-only, so only the hold commands appear as responses.
+        "PERMHOLD", "VACHOLD", "TEMPHOLD",
+        # Status (p.52-54)
+        "HVAC", "H", "RECOVSTAT", "HOLDSTAT", "HOLD", "PROGUPDT", "ERROR",
+        # Messaging (p.55)
+        "PMES1", "PMES2", "PMES3", "PMES4", "TMPMES",
+        # Synthetic: bare "SNn" reply to the global connected-nodes query.
+        "PRESENT",
     }
-) | _COS_ACK_COMMANDS
+)
 
 
 def _is_known_command(cmd: str) -> bool:
@@ -317,6 +322,13 @@ class Aprilaire8800Coordinator:
         self._pending_query_checks: set[asyncio.Task] = set()
         self.queries_sent_count: int = 0
         self.query_timeouts_count: int = 0
+        # Addresses currently flagged unresponsive, mapped to the monotonic
+        # time they went unresponsive. A node is added when a query goes
+        # unanswered and removed when any message arrives from it. The counter
+        # and timeout event fire only on the responsive -> unresponsive
+        # transition (once per episode), not per failed query, so one silent
+        # node doesn't emit a timeout for every query in a refresh burst.
+        self._node_unresponsive_since: dict[int, float] = {}
 
     @property
     def parse_error_count(self) -> int:
@@ -878,10 +890,19 @@ class Aprilaire8800Coordinator:
             # during discovery and for configured addresses that never came up.
             return
         if node.last_seen_monotonic >= sent_at:
-            return  # Some response arrived in the window.
+            # Responded within the window. Any recovery from an unresponsive
+            # episode was already handled in _handle_message when the message
+            # arrived, so there's nothing to do here.
+            return
+        if addr in self._node_unresponsive_since:
+            # Already mid-episode: we counted and fired on the transition, so
+            # don't re-fire for every subsequent unanswered query.
+            return
 
+        now = time.monotonic()
+        self._node_unresponsive_since[addr] = now
         self.query_timeouts_count += 1
-        since_last = time.monotonic() - node.last_seen_monotonic
+        since_last = now - node.last_seen_monotonic
         self.hass.bus.async_fire(
             EVENT_QUERY_TIMEOUT,
             {
@@ -892,7 +913,7 @@ class Aprilaire8800Coordinator:
         )
         async_dispatcher_send(self.hass, SIGNAL_BUS_ERRORS_UPDATED)
         _LOGGER.warning(
-            "Query to node %d timed out after %.1fs (last seen %.1fs ago)",
+            "Node %d became unresponsive (no reply within %.1fs, last seen %.1fs ago)",
             addr,
             QUERY_RESPONSE_TIMEOUT_S,
             since_last,
@@ -1071,6 +1092,18 @@ class Aprilaire8800Coordinator:
         # counts as evidence the node is alive on the wire. The query-timeout
         # check depends on this line; without it, timeouts never fire.
         node.last_seen_monotonic = time.monotonic()
+        # Recovery half of the responsive/unresponsive transition: if this node
+        # was flagged unresponsive, any message means it's back. Fire one
+        # recovery event and end the episode.
+        if msg.address in self._node_unresponsive_since:
+            outage = node.last_seen_monotonic - self._node_unresponsive_since.pop(msg.address)
+            self.hass.bus.async_fire(
+                EVENT_QUERY_RECOVERED,
+                {"address": msg.address, "unresponsive_seconds": round(outage, 1)},
+            )
+            _LOGGER.info(
+                "Node %d responsive again after %.1fs unresponsive", msg.address, outage
+            )
 
         cmd = msg.command
         val = msg.value or ""

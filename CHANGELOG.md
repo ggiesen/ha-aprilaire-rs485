@@ -14,17 +14,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (messages sent, messages received, verifications attempted, queries sent).
   Error counters refresh immediately on change; activity totals poll. All reset
   to zero on restart by design.
-- Diagnostic events fired alongside each error counter so automations and the
+- Diagnostic events fired alongside the error counters so automations and the
   logbook can react without polling: `aprilaire_rs485_parse_error`,
   `aprilaire_rs485_transport_error`, `aprilaire_rs485_apply_error`,
   `aprilaire_rs485_unknown_command`, `aprilaire_rs485_write_verification_failed`,
-  and `aprilaire_rs485_query_timeout`, each with a context payload.
+  `aprilaire_rs485_query_timeout`, and `aprilaire_rs485_query_recovered`, each
+  with a context payload.
 - Write verification: setpoint, mode, and fan writes are checked five seconds
   later against the device's reported state, surfacing writes that were lost or
   rejected by a hold/lockout (which the protocol otherwise drops silently).
-- Per-node query-timeout tracking: a per-node query with no response within two
-  seconds increments a counter and fires an event, making an unresponsive node
-  visible.
+- Per-node query-timeout tracking with transition semantics: when a node stops
+  answering, the counter increments once and a `query_timeout` event fires (not
+  once per unanswered query); when it answers again, a `query_recovered` event
+  fires. An intermittently-slow node shows up as a few episodes rather than
+  dozens of per-query timeouts.
+- The unknown-command allow-list is the full 8800 command set from the
+  Programmer's Manual (RPC P/N 10009414), so `unknown_commands` flags only
+  genuinely off-protocol traffic. This covers change-of-state codes such as
+  `PROGFMT`, `EVTSDAY`, and `PROGUPDT` that only appear when a setup or schedule
+  changes on the thermostat, plus the COS-enable acknowledgements and the
+  TIME/DATE/PERMHOLD write echoes.
 
 ### Changed
 
