@@ -55,6 +55,7 @@ from .const import (
     EVENT_WRITE_VERIFICATION_FAILED,
     MANUFACTURER,
     MODEL,
+    MODEL_8870,
     OUTDOOR_TEMP_BROADCAST_INTERVAL_S,
     QUERY_RESPONSE_TIMEOUT_S,
     SIGNAL_BUS_ERRORS_UPDATED,
@@ -73,6 +74,7 @@ from .protocol import (
     decode_humidity,
     decode_hvac,
     decode_temperature,
+    parse_model,
     parse_rsm,
     parse_rxsy_command,
 )
@@ -162,6 +164,9 @@ class NodeState:
     # Misc
     # Identity (from ID query response).
     model_info: str | None = None
+    # Model number parsed out of model_info ("8800", "8870", ...). Used to
+    # branch model-specific behaviour; None until the ID response arrives.
+    model: str | None = None
 
     # Liveness.
     last_seen_monotonic: float | None = None
@@ -329,6 +334,9 @@ class Aprilaire8800Coordinator:
         # transition (once per episode), not per failed query, so one silent
         # node doesn't emit a timeout for every query in a refresh burst.
         self._node_unresponsive_since: dict[int, float] = {}
+        # Addresses we've already logged a limited-support notice for, so the
+        # 8870-detected warning fires once per node, not on every ID response.
+        self._unsupported_model_warned: set[int] = set()
 
     @property
     def parse_error_count(self) -> int:
@@ -494,6 +502,11 @@ class Aprilaire8800Coordinator:
 
     async def _async_initial_query(self, addr: int) -> None:
         """Pull the values that aren't reliably provided by COS at startup."""
+        # 8870 seam: this (and _async_periodic_refresh / _async_apply_cos) runs
+        # the full 8800 query set for every model. A model-aware profile would
+        # skip const.COMMANDS_NOT_ON_8870 and the C13-C19 COS bits for 8870
+        # nodes (node.model == MODEL_8870). Not done yet - unsupported queries
+        # simply go unanswered, which the per-node query-timeout tolerates.
         # CT tells us whether this is a thermostat or humidistat node.
         await self._async_query(addr, "CT")
         await self._async_query(addr, "NAME")
@@ -1135,6 +1148,24 @@ class Aprilaire8800Coordinator:
                 },
             )
             async_dispatcher_send(self.hass, SIGNAL_BUS_ERRORS_UPDATED)
+
+        # Model detection: the ID response carries the model number. Parse it
+        # so model-specific behaviour can branch on node.model, and warn once
+        # per node if it's an 8870. Detection only - the 8870 still runs the
+        # 8800 command profile (see const.COMMANDS_NOT_ON_8870); full 8870
+        # support is unimplemented.
+        if cmd == "ID":
+            node.model = parse_model(val)
+            if node.model == MODEL_8870 and msg.address not in self._unsupported_model_warned:
+                self._unsupported_model_warned.add(msg.address)
+                _LOGGER.warning(
+                    "Node %d is a Model 8870. This integration targets the 8800 "
+                    "and runs the 8800 command profile; core climate works, but "
+                    "8800-only features (built-in humidity, remote temperature, "
+                    "deadband, maintenance alarms, progressive recovery) will be "
+                    "unavailable. Full 8870 support is not implemented.",
+                    msg.address,
+                )
 
         if new_node:
             async_dispatcher_send(self.hass, SIGNAL_NODE_DISCOVERED, msg.address)

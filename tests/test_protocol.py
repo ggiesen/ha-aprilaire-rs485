@@ -22,6 +22,7 @@ from protocol import (
     decode_hvac,
     decode_temperature,
     parse_message,
+    parse_model,
 )
 
 # ---------- parser ----------
@@ -385,3 +386,27 @@ def test_loopback_round_trip_at_each_baud(baud: int) -> None:
     assert by_addr[2].value == "COOL"
     assert by_addr[3].command == "F"
     assert by_addr[3].value == "AUTO"
+
+
+# ---------- model detection ----------
+
+
+def test_parse_model_8800() -> None:
+    """A standard 8800 ID response yields the 8800 model token."""
+    assert parse_model("MODEL# 8800 REV: 1.1 RPC 2011") == "8800"
+
+
+def test_parse_model_8870() -> None:
+    """An 8870 ID response yields the 8870 model token."""
+    assert parse_model("MODEL# 8870 REV: 1.3 RPC 2012") == "8870"
+
+
+def test_parse_model_extra_whitespace() -> None:
+    """Leading/trailing whitespace and padded spacing are tolerated."""
+    assert parse_model("  MODEL#   8800   REV: 1.1 RPC 2011  ") == "8800"
+
+
+def test_parse_model_rejects_non_id() -> None:
+    """Values that aren't an ID response return None, not a bogus token."""
+    for value in ("", None, "72F", "OK", "SN1 T=72F"):
+        assert parse_model(value) is None

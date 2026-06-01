@@ -750,3 +750,19 @@ def parse_rxsy_command(command: str) -> tuple[int, int] | None:
     if not m:
         return None
     return int(m.group("module")), int(m.group("sensor"))
+
+
+_ID_MODEL_RE = re.compile(r"^MODEL#\s+(?P<model>\S+)")
+
+
+def parse_model(id_value: str | None) -> str | None:
+    """Extract the model number from an ``ID`` response value.
+
+    The ID response is ``MODEL# <model> REV: <rev> RPC <year>`` (manual p.16),
+    e.g. ``MODEL# 8800 REV: 1.1 RPC 2011``. Returns the model token ("8800",
+    "8870", ...) or None if the value doesn't look like an ID response.
+    """
+    if not id_value:
+        return None
+    m = _ID_MODEL_RE.match(id_value.strip())
+    return m.group("model") if m else None

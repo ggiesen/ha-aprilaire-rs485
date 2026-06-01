@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Model detection: the `ID` response is parsed into a model number (`node.model`)
+  and an 8870 node is logged once with a limited-support notice. Detection and
+  scaffolding only -- 8870 nodes still run the 8800 command profile (the
+  8800-only commands they don't support simply go unanswered, which the
+  per-node query-timeout tolerates). A model-specific query/COS profile is left
+  unimplemented pending hardware to validate against; `const.COMMANDS_NOT_ON_8870`
+  records the gap and `_async_initial_query` marks the seam.
+
 ## [0.2.0] - 2026-06-01
 
 ### Added

@@ -1312,3 +1312,40 @@ async def test_query_recovery_event_and_fresh_episode(
     await hass.async_block_till_done()
     assert coord.query_timeouts_count == 2
     assert len(timeouts) == 2
+
+
+# ---------- model detection ----------
+
+
+async def test_handle_message_detects_model_and_warns_once(hass, coord) -> None:
+    """An ID response populates node.model; an 8870 is flagged exactly once."""
+    from custom_components.aprilaire_rs485.const import MODEL_8870  # noqa: PLC0415
+
+    # 8800 ID: model recorded, no limited-support flag.
+    coord._handle_message(
+        NodeMessage(
+            address=1,
+            command="ID",
+            value="MODEL# 8800 REV: 1.1 RPC 2011",
+            name=None,
+            raw="",
+        )
+    )
+    await hass.async_block_till_done()
+    assert coord.nodes[1].model == "8800"
+    assert 1 not in coord._unsupported_model_warned
+
+    # 8870 ID, seen three times: model recorded, warned once (idempotent).
+    for _ in range(3):
+        coord._handle_message(
+            NodeMessage(
+                address=2,
+                command="ID",
+                value="MODEL# 8870 REV: 1.3 RPC 2012",
+                name=None,
+                raw="",
+            )
+        )
+    await hass.async_block_till_done()
+    assert coord.nodes[2].model == MODEL_8870
+    assert coord._unsupported_model_warned == {2}

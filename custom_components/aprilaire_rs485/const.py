@@ -65,6 +65,27 @@ COS_ENABLE = {
 CT_HUMIDISTAT = 1
 CT_THERMOSTAT = 0
 
+# Thermostat model identifiers, taken from the ID response (manual p.16). The
+# 8800 protocol is an expanded superset of the 8870 (StatNet rev 1B): an 8870
+# on the bus speaks the shared core but lacks the 8800-only commands below.
+MODEL_8800 = "8800"
+MODEL_8870 = "8870"
+
+# Commands the 8800 supports that the 8870 does not (absent from the 8870
+# Programmer's Manual, RPC 10005756). Captured here so a future model-aware
+# query/COS profile can skip them on 8870 nodes. NOT yet wired in: we currently
+# run the 8800 query set for every model and let an 8870 leave the unsupported
+# queries unanswered, which the per-node query-timeout handles gracefully.
+# Full 8870 support is unimplemented (no 8870 available to validate against).
+COMMANDS_NOT_ON_8870 = frozenset(
+    {
+        "BIHUM", "RTS", "DBAND",
+        "FLTALM", "WPALM", "DEHALM", "SYSALM",
+        "FLTALMP", "WPALMP", "DEHALMP", "SYSALMP",
+        "RECOVSTAT", "HOLDSTAT",
+    }
+)
+
 # System modes (verbose form; the node always returns the verbose form per
 # manual p.36 regardless of which form was sent).
 MODE_AUTO = "AUTO"

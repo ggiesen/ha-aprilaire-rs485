@@ -411,8 +411,12 @@ treat them as provisional and please report issues:
 - 19200 baud
 - TCP-to-RS-485 gateways (only local serial via the 8811 has been used)
 - Heat-pump and emergency-heat modes
-- Model 8870 nodes (the 8800 protocol is a superset; 8800-only commands return
-  nothing on an 8870)
+- Model 8870 nodes. The 8800 protocol is a superset, so an 8870 is detected
+  from its `ID` response and logged with a limited-support notice, but it still
+  runs the full 8800 command profile. Core climate works; the 8800-only
+  commands return nothing on an 8870, so those features (built-in humidity,
+  remote temperature, deadband, maintenance alarms, progressive recovery) stay
+  unavailable. A model-specific profile is not implemented (no 8870 to test).
 
 ## Bench testing
 
