@@ -321,6 +321,17 @@ def test_is_known_command_recognises_ignored_bare_responses(is_known) -> None:
     assert is_known("BLTON")
 
 
+def test_is_known_command_recognises_clock_write_echoes(is_known) -> None:
+    """TIME/DATE echoes from the clock-sync push are recognised, not unknown.
+
+    _async_push_clock writes TIME and DATE globally at startup and hourly; the
+    device echoes them back like any other write ack. They carry no state we
+    read, so they're knowingly ignored rather than counted as unknown.
+    """
+    assert is_known("TIME")
+    assert is_known("DATE")
+
+
 def test_is_known_command_recognises_cos_acknowledgements(is_known) -> None:
     """COS-enable echoes (C1..C19, CP) are recognised, not flagged unknown.
 

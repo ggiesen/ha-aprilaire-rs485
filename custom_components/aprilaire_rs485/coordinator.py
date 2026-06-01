@@ -229,8 +229,10 @@ _KNOWN_RESPONSE_COMMANDS: frozenset[str] = frozenset(
         "ERROR",
         # Identity / topology
         "NAME", "ID", "RSM",
-        # Knowingly-ignored bare responses (no state applied).
-        "PRESENT", "BLTON",
+        # Knowingly-ignored responses with no state to apply: the bare PRESENT/
+        # BLTON replies, and the echoes of the clock-sync writes (TIME/DATE),
+        # which the device acks back the same way it acks the COS-enable writes.
+        "PRESENT", "BLTON", "TIME", "DATE",
     }
 ) | _COS_ACK_COMMANDS
 
