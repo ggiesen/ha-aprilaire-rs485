@@ -182,10 +182,29 @@ class NodeState:
     )
 
 
+# The device echoes every change-of-state-enable write back as an
+# acknowledgement ("SNx C1=ON", "SNx CP=1"), once per node each time we apply
+# COS - which is every periodic refresh. They carry no state we need, but they
+# are expected responses, so they belong on the allow-list (otherwise they
+# dominate the unknown-command counter: they were always arriving, just
+# silently ignored by _apply_to_state until the counter made them visible).
+# These mirror COS_ENABLE (plus the CP pattern write). Listed as literals
+# rather than derived from COS_ENABLE so this block stays self-contained for
+# the source-slicing test loaders; test_bus_counters iterates COS_ENABLE and
+# asserts each appears here, so the two can't silently drift.
+_COS_ACK_COMMANDS: frozenset[str] = frozenset(
+    {
+        "CP",
+        "C1", "C2", "C3", "C5", "C6", "C7", "C8",
+        "C13", "C14", "C15", "C16", "C17", "C19",
+    }
+)
+
 # Command codes the thermostat may send us that we have explicit handling for
-# in _apply_to_state, plus the bare responses we knowingly ignore. Used by
-# _is_known_command to identify responses we DON'T recognise (which become
-# "unknown_command" events and increment the diagnostic counter).
+# in _apply_to_state, plus the responses we knowingly ignore (COS acks and the
+# bare PRESENT/BLTON replies). Used by _is_known_command to identify responses
+# we DON'T recognise (which become "unknown_command" events and increment the
+# diagnostic counter).
 #
 # Audited against _apply_to_state: every branch there must appear here, or that
 # response false-positives as unknown on every occurrence. The test suite
@@ -213,7 +232,7 @@ _KNOWN_RESPONSE_COMMANDS: frozenset[str] = frozenset(
         # Knowingly-ignored bare responses (no state applied).
         "PRESENT", "BLTON",
     }
-)
+) | _COS_ACK_COMMANDS
 
 
 def _is_known_command(cmd: str) -> bool:

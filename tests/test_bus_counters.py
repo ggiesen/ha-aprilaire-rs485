@@ -321,6 +321,22 @@ def test_is_known_command_recognises_ignored_bare_responses(is_known) -> None:
     assert is_known("BLTON")
 
 
+def test_is_known_command_recognises_cos_acknowledgements(is_known) -> None:
+    """COS-enable echoes (C1..C19, CP) are recognised, not flagged unknown.
+
+    The device acks every COS-enable write by echoing it back, on every node
+    each time COS is applied (every periodic refresh). Treating those as
+    unknown commands would swamp the counter with expected traffic - the exact
+    bug this guards against. Iterating COS_ENABLE keeps the allow-list in sync
+    with what we actually enable.
+    """
+    from custom_components.aprilaire_rs485.const import COS_ENABLE  # noqa: PLC0415
+
+    assert is_known("CP")
+    for code in COS_ENABLE:
+        assert is_known(code), f"COS-enable ack {code} should be recognised"
+
+
 def test_apply_to_state_branches_all_in_allowlist(is_known) -> None:
     """Audit: every command literal handled in _apply_to_state is recognised.
 
