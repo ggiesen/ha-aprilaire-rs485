@@ -17,6 +17,7 @@ Layers covered:
      commands return False.
   4. Coordinator-side counters and HA event firing in _handle_message.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -168,7 +169,7 @@ def test_protocol_listener_isolation_between_message_and_error() -> None:
     p.add_error_listener(errs.append)
 
     p._dispatch_raw("SN1 T=72F")  # parses cleanly
-    p._dispatch_raw("garbage")     # fails to parse
+    p._dispatch_raw("garbage")  # fails to parse
 
     assert len(msgs) == 1
     assert msgs[0].address == 1
@@ -359,19 +360,30 @@ def test_is_known_command_recognises_all_cos_report_codes(is_known) -> None:
     them.
     """
     cos_report_codes = (
-        "H",                              # C1 relays
-        "T", "HUM",                       # C2
-        "OT", "OH",                       # C3
-        "SH", "SC", "SHUM", "SDEH",       # C5 setpoints
-        "HOLD",                           # C6
-        "M",                              # C7
-        "F",                              # C8
-        "TIME", "DATE", "PROGFMT", "EVTSDAY",  # C13 setup
-        "FLTALM", "WPALM", "DEHALM", "SYSALM",  # C14 alarms
-        "RECOVSTAT",                      # C15
-        "PROGUPDT",                       # C16 schedule
-        "HOLDSTAT",                       # C17
-        "ERROR",                          # C19
+        "H",  # C1 relays
+        "T",
+        "HUM",  # C2
+        "OT",
+        "OH",  # C3
+        "SH",
+        "SC",
+        "SHUM",
+        "SDEH",  # C5 setpoints
+        "HOLD",  # C6
+        "M",  # C7
+        "F",  # C8
+        "TIME",
+        "DATE",
+        "PROGFMT",
+        "EVTSDAY",  # C13 setup
+        "FLTALM",
+        "WPALM",
+        "DEHALM",
+        "SYSALM",  # C14 alarms
+        "RECOVSTAT",  # C15
+        "PROGUPDT",  # C16 schedule
+        "HOLDSTAT",  # C17
+        "ERROR",  # C19
     )
     for code in cos_report_codes:
         assert is_known(code), f"COS report code {code} should be recognised"
@@ -448,9 +460,7 @@ async def coord(hass):
     )
 
 
-async def test_coordinator_apply_error_increments_on_exception(
-    hass, coord
-) -> None:
+async def test_coordinator_apply_error_increments_on_exception(hass, coord) -> None:
     """If _apply_to_state raises, apply_error_count goes up."""
     from custom_components.aprilaire_rs485.const import (  # noqa: PLC0415
         EVENT_APPLY_ERROR,
@@ -470,9 +480,7 @@ async def test_coordinator_apply_error_increments_on_exception(
 
     cls._apply_to_state = staticmethod(boom)
     try:
-        coord._handle_message(
-            NodeMessage(address=1, command="T", value="72F", name=None, raw="")
-        )
+        coord._handle_message(NodeMessage(address=1, command="T", value="72F", name=None, raw=""))
         await hass.async_block_till_done()
     finally:
         # Restoring the descriptor (not the unwrapped function) preserves
@@ -498,9 +506,7 @@ async def test_coordinator_unknown_command_increments(hass, coord) -> None:
     hass.bus.async_listen(EVENT_UNKNOWN_COMMAND, events.append)
 
     coord._handle_message(
-        NodeMessage(
-            address=3, command="WIDGETSTAT", value="42", name=None, raw=""
-        )
+        NodeMessage(address=3, command="WIDGETSTAT", value="42", name=None, raw="")
     )
     await hass.async_block_till_done()
 
@@ -512,13 +518,9 @@ async def test_coordinator_unknown_command_increments(hass, coord) -> None:
     assert payload["value"] == "42"
 
 
-async def test_coordinator_known_command_does_not_increment_unknown(
-    hass, coord
-) -> None:
+async def test_coordinator_known_command_does_not_increment_unknown(hass, coord) -> None:
     """A handled command does not trip the unknown-command counter."""
-    coord._handle_message(
-        NodeMessage(address=1, command="T", value="72F", name=None, raw="")
-    )
+    coord._handle_message(NodeMessage(address=1, command="T", value="72F", name=None, raw=""))
     await hass.async_block_till_done()
 
     assert coord.unknown_command_count == 0
@@ -537,12 +539,8 @@ async def test_coordinator_protocol_error_proxy_via_handle(hass, coord) -> None:
     hass.bus.async_listen(EVENT_PARSE_ERROR, parse_events.append)
     hass.bus.async_listen(EVENT_TRANSPORT_ERROR, transport_events.append)
 
-    coord._handle_protocol_error(
-        BusError(category=ERROR_PARSE, detail="bad line", raw="oops")
-    )
-    coord._handle_protocol_error(
-        BusError(category=ERROR_TRANSPORT, detail="connection refused")
-    )
+    coord._handle_protocol_error(BusError(category=ERROR_PARSE, detail="bad line", raw="oops"))
+    coord._handle_protocol_error(BusError(category=ERROR_TRANSPORT, detail="connection refused"))
     await hass.async_block_till_done()
 
     assert len(parse_events) == 1
@@ -576,14 +574,10 @@ async def test_coordinator_signal_fires_on_unknown(hass, coord) -> None:
     )
 
     fired: list[int] = []
-    unsub = async_dispatcher_connect(
-        hass, SIGNAL_BUS_ERRORS_UPDATED, lambda: fired.append(1)
-    )
+    unsub = async_dispatcher_connect(hass, SIGNAL_BUS_ERRORS_UPDATED, lambda: fired.append(1))
     try:
         coord._handle_message(
-            NodeMessage(
-                address=1, command="MYSTERY", value="x", name=None, raw=""
-            )
+            NodeMessage(address=1, command="MYSTERY", value="x", name=None, raw="")
         )
         await hass.async_block_till_done()
     finally:
@@ -604,9 +598,7 @@ async def test_coordinator_signal_fires_on_unknown(hass, coord) -> None:
 #   3. await asyncio.sleep(epsilon) and check counters / events.
 
 
-async def test_verification_success_does_not_increment_failures(
-    hass, coord, monkeypatch
-) -> None:
+async def test_verification_success_does_not_increment_failures(hass, coord, monkeypatch) -> None:
     """When the check function returns matches=True, no failure event fires."""
     from custom_components.aprilaire_rs485 import (  # noqa: PLC0415
         coordinator as coord_module,
@@ -628,7 +620,9 @@ async def test_verification_success_does_not_increment_failures(
     coord.nodes[1] = NodeState(address=1, setpoint_heat=72.0)
 
     coord._register_verification(
-        1, "SH", "72",
+        1,
+        "SH",
+        "72",
         lambda n: coord._check_setpoint(n.setpoint_heat, 72.0),
     )
     # Let the verification task run to completion.
@@ -642,9 +636,7 @@ async def test_verification_success_does_not_increment_failures(
     assert events == []
 
 
-async def test_verification_mismatch_fires_failure(
-    hass, coord, monkeypatch
-) -> None:
+async def test_verification_mismatch_fires_failure(hass, coord, monkeypatch) -> None:
     """When NodeState shows a different value, a failure event fires."""
     from custom_components.aprilaire_rs485 import (  # noqa: PLC0415
         coordinator as coord_module,
@@ -666,7 +658,9 @@ async def test_verification_mismatch_fires_failure(
     coord.nodes[1] = NodeState(address=1, setpoint_heat=70.0)
 
     coord._register_verification(
-        1, "SH", "72",
+        1,
+        "SH",
+        "72",
         lambda n: coord._check_setpoint(n.setpoint_heat, 72.0),
     )
     import asyncio  # noqa: PLC0415
@@ -684,9 +678,7 @@ async def test_verification_mismatch_fires_failure(
     assert payload["actual"] == "70.0"
 
 
-async def test_verification_node_disappeared_fires_failure(
-    hass, coord, monkeypatch
-) -> None:
+async def test_verification_node_disappeared_fires_failure(hass, coord, monkeypatch) -> None:
     """If the node isn't in coordinator state at check time, that's a failure."""
     from custom_components.aprilaire_rs485 import (  # noqa: PLC0415
         coordinator as coord_module,
@@ -702,7 +694,9 @@ async def test_verification_node_disappeared_fires_failure(
 
     # Don't populate coord.nodes[99] - simulate node disappearing.
     coord._register_verification(
-        99, "SH", "72",
+        99,
+        "SH",
+        "72",
         lambda n: coord._check_setpoint(n.setpoint_heat, 72.0),
     )
     import asyncio  # noqa: PLC0415
@@ -715,9 +709,7 @@ async def test_verification_node_disappeared_fires_failure(
     assert "disappeared" in events[0].data["detail"]
 
 
-async def test_verification_newer_supersedes_older(
-    hass, coord, monkeypatch
-) -> None:
+async def test_verification_newer_supersedes_older(hass, coord, monkeypatch) -> None:
     """A second verification for the same (addr, cmd) cancels the first.
 
     The older write's verification would have been misleading anyway:
@@ -745,12 +737,16 @@ async def test_verification_newer_supersedes_older(
 
     # First write: expects 72.
     coord._register_verification(
-        1, "SH", "72",
+        1,
+        "SH",
+        "72",
         lambda n: coord._check_setpoint(n.setpoint_heat, 72.0),
     )
     # Immediately follow up with a second write of the same command.
     coord._register_verification(
-        1, "SH", "70",
+        1,
+        "SH",
+        "70",
         lambda n: coord._check_setpoint(n.setpoint_heat, 70.0),
     )
     import asyncio  # noqa: PLC0415
@@ -765,9 +761,7 @@ async def test_verification_newer_supersedes_older(
     assert events == []
 
 
-async def test_verification_for_different_commands_coexist(
-    hass, coord, monkeypatch
-) -> None:
+async def test_verification_for_different_commands_coexist(hass, coord, monkeypatch) -> None:
     """Verifications for distinct (addr, cmd) pairs don't interfere."""
     from custom_components.aprilaire_rs485 import (  # noqa: PLC0415
         coordinator as coord_module,
@@ -779,16 +773,18 @@ async def test_verification_for_different_commands_coexist(
         NodeState,
     )
 
-    coord.nodes[1] = NodeState(
-        address=1, setpoint_heat=72.0, setpoint_cool=78.0
-    )
+    coord.nodes[1] = NodeState(address=1, setpoint_heat=72.0, setpoint_cool=78.0)
 
     coord._register_verification(
-        1, "SH", "72",
+        1,
+        "SH",
+        "72",
         lambda n: coord._check_setpoint(n.setpoint_heat, 72.0),
     )
     coord._register_verification(
-        1, "SC", "78",
+        1,
+        "SC",
+        "78",
         lambda n: coord._check_setpoint(n.setpoint_cool, 78.0),
     )
     import asyncio  # noqa: PLC0415
@@ -800,9 +796,7 @@ async def test_verification_for_different_commands_coexist(
     assert coord.verification_failures_count == 0
 
 
-async def test_verification_check_exception_recorded_as_failure(
-    hass, coord, monkeypatch
-) -> None:
+async def test_verification_check_exception_recorded_as_failure(hass, coord, monkeypatch) -> None:
     """A buggy check function fails the verification rather than crashing."""
     from custom_components.aprilaire_rs485 import (  # noqa: PLC0415
         coordinator as coord_module,
@@ -836,9 +830,7 @@ async def test_verification_check_exception_recorded_as_failure(
     assert "check is buggy" in events[0].data["detail"]
 
 
-async def test_verification_cancel_all_on_shutdown(
-    hass, coord, monkeypatch
-) -> None:
+async def test_verification_cancel_all_on_shutdown(hass, coord, monkeypatch) -> None:
     """async_stop cancels in-flight verifications without firing failures."""
     from custom_components.aprilaire_rs485 import (  # noqa: PLC0415
         coordinator as coord_module,
@@ -854,7 +846,10 @@ async def test_verification_cancel_all_on_shutdown(
     hass.bus.async_listen(EVENT_WRITE_VERIFICATION_FAILED, events.append)
 
     coord._register_verification(
-        1, "SH", "72", lambda _n: (False, "would have failed"),
+        1,
+        "SH",
+        "72",
+        lambda _n: (False, "would have failed"),
     )
     # Cancel without waiting.
     coord._cancel_all_verifications()
@@ -934,9 +929,7 @@ def test_check_string_ci_case_insensitive() -> None:
 # query went out, increment query_timeouts_count and fire the event.
 
 
-async def test_query_to_responsive_node_no_timeout(
-    hass, coord, monkeypatch
-) -> None:
+async def test_query_to_responsive_node_no_timeout(hass, coord, monkeypatch) -> None:
     """If last_seen_monotonic moves forward after the query, no timeout."""
     import asyncio as _asyncio  # noqa: PLC0415
     import time as _time  # noqa: PLC0415
@@ -969,9 +962,7 @@ async def test_query_to_responsive_node_no_timeout(
     assert events == []
 
 
-async def test_query_to_silent_node_fires_timeout(
-    hass, coord, monkeypatch
-) -> None:
+async def test_query_to_silent_node_fires_timeout(hass, coord, monkeypatch) -> None:
     """If last_seen_monotonic stays stale through the window, timeout fires."""
     import asyncio as _asyncio  # noqa: PLC0415
     import time as _time  # noqa: PLC0415
@@ -1009,9 +1000,7 @@ async def test_query_to_silent_node_fires_timeout(
     assert 29 < payload["last_seen_seconds_ago"] < 32
 
 
-async def test_query_to_never_seen_node_no_timeout(
-    hass, coord, monkeypatch
-) -> None:
+async def test_query_to_never_seen_node_no_timeout(hass, coord, monkeypatch) -> None:
     """A node with last_seen_monotonic=None doesn't generate timeout events.
 
     During initial discovery and for explicitly-configured-but-offline
@@ -1050,9 +1039,7 @@ async def test_query_to_never_seen_node_no_timeout(
     assert events == []
 
 
-async def test_query_to_missing_node_no_timeout(
-    hass, coord, monkeypatch
-) -> None:
+async def test_query_to_missing_node_no_timeout(hass, coord, monkeypatch) -> None:
     """Same as never-seen: an address with no NodeState entry skips silently."""
     import asyncio as _asyncio  # noqa: PLC0415
 
@@ -1103,9 +1090,7 @@ async def test_broadcast_query_not_tracked(hass, coord, monkeypatch) -> None:
     assert len(coord._pending_query_checks) == 0
 
 
-async def test_query_check_cancelled_on_shutdown(
-    hass, coord, monkeypatch
-) -> None:
+async def test_query_check_cancelled_on_shutdown(hass, coord, monkeypatch) -> None:
     """async_stop cancels in-flight query checks; no spurious timeout fires."""
     import asyncio as _asyncio  # noqa: PLC0415
     import time as _time  # noqa: PLC0415
@@ -1176,9 +1161,7 @@ async def test_handle_message_updates_last_seen(hass, coord) -> None:
     from protocol import NodeMessage  # noqa: PLC0415
 
     before = _time.monotonic()
-    coord._handle_message(
-        NodeMessage(address=4, command="T", value="72F", name=None, raw="")
-    )
+    coord._handle_message(NodeMessage(address=4, command="T", value="72F", name=None, raw=""))
     await hass.async_block_till_done()
 
     node = coord.nodes[4]
@@ -1186,9 +1169,7 @@ async def test_handle_message_updates_last_seen(hass, coord) -> None:
     assert node.last_seen_monotonic >= before
 
 
-async def test_query_with_response_before_check_completes(
-    hass, coord, monkeypatch
-) -> None:
+async def test_query_with_response_before_check_completes(hass, coord, monkeypatch) -> None:
     """A response arriving partway through the window still avoids timeout."""
     import asyncio as _asyncio  # noqa: PLC0415
     import time as _time  # noqa: PLC0415
@@ -1207,9 +1188,7 @@ async def test_query_with_response_before_check_completes(
     events: list = []
     hass.bus.async_listen(EVENT_QUERY_TIMEOUT, events.append)
 
-    coord.nodes[1] = NodeState(
-        address=1, last_seen_monotonic=_time.monotonic() - 10.0
-    )
+    coord.nodes[1] = NodeState(address=1, last_seen_monotonic=_time.monotonic() - 10.0)
 
     await coord._async_query(1, "T")
     # Halfway through the window, simulate a response.
@@ -1222,9 +1201,7 @@ async def test_query_with_response_before_check_completes(
     assert coord.query_timeouts_count == 0
 
 
-async def test_query_timeout_counts_one_episode_not_per_query(
-    hass, coord, monkeypatch
-) -> None:
+async def test_query_timeout_counts_one_episode_not_per_query(hass, coord, monkeypatch) -> None:
     """A silent node hit by a burst of queries yields ONE timeout, not one each.
 
     This is the transition-based behaviour: the counter and event fire once
@@ -1260,9 +1237,7 @@ async def test_query_timeout_counts_one_episode_not_per_query(
     assert 1 in coord._node_unresponsive_since
 
 
-async def test_query_recovery_event_and_fresh_episode(
-    hass, coord, monkeypatch
-) -> None:
+async def test_query_recovery_event_and_fresh_episode(hass, coord, monkeypatch) -> None:
     """Going silent then answering fires timeout then recovery; later silence
     is a new episode."""
     import asyncio as _asyncio  # noqa: PLC0415
@@ -1296,9 +1271,7 @@ async def test_query_recovery_event_and_fresh_episode(
     assert 1 in coord._node_unresponsive_since
 
     # A message arrives -> recovery event, episode ends.
-    coord._handle_message(
-        NodeMessage(address=1, command="T", value="72F", name=None, raw="")
-    )
+    coord._handle_message(NodeMessage(address=1, command="T", value="72F", name=None, raw=""))
     await hass.async_block_till_done()
     assert len(recoveries) == 1
     assert recoveries[0].data["address"] == 1

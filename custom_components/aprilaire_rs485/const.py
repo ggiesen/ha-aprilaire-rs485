@@ -79,10 +79,19 @@ MODEL_8870 = "8870"
 # Full 8870 support is unimplemented (no 8870 available to validate against).
 COMMANDS_NOT_ON_8870 = frozenset(
     {
-        "BIHUM", "RTS", "DBAND",
-        "FLTALM", "WPALM", "DEHALM", "SYSALM",
-        "FLTALMP", "WPALMP", "DEHALMP", "SYSALMP",
-        "RECOVSTAT", "HOLDSTAT",
+        "BIHUM",
+        "RTS",
+        "DBAND",
+        "FLTALM",
+        "WPALM",
+        "DEHALM",
+        "SYSALM",
+        "FLTALMP",
+        "WPALMP",
+        "DEHALMP",
+        "SYSALMP",
+        "RECOVSTAT",
+        "HOLDSTAT",
     }
 )
 

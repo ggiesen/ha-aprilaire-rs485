@@ -372,9 +372,7 @@ class Aprilaire8800Protocol:
             except Exception as exc:
                 _LOGGER.warning("Failed to open %s: %s", self._url, exc)
                 self.transport_error_count += 1
-                self._emit_error(
-                    BusError(category=ERROR_TRANSPORT, detail=f"open failed: {exc}")
-                )
+                self._emit_error(BusError(category=ERROR_TRANSPORT, detail=f"open failed: {exc}"))
                 return False
             # If this is a TCP transport (pyserial's socket:// handler), pry
             # out the underlying socket and disable Nagle. Best-effort.
@@ -486,9 +484,7 @@ class Aprilaire8800Protocol:
             except (serial.SerialException, OSError) as exc:
                 _LOGGER.warning("Read failed: %s; will reconnect", exc)
                 self.transport_error_count += 1
-                self._emit_error(
-                    BusError(category=ERROR_TRANSPORT, detail=f"read failed: {exc}")
-                )
+                self._emit_error(BusError(category=ERROR_TRANSPORT, detail=f"read failed: {exc}"))
                 self._close_transport()
                 buf.clear()
                 if self._stop.wait(timeout=RECONNECT_BACKOFF_S):
@@ -536,9 +532,7 @@ class Aprilaire8800Protocol:
         if msg is None:
             _LOGGER.debug("Unparseable: %s", line)
             self.parse_error_count += 1
-            self._emit_error(
-                BusError(category=ERROR_PARSE, detail="unparseable line", raw=line)
-            )
+            self._emit_error(BusError(category=ERROR_PARSE, detail="unparseable line", raw=line))
             return
         for cb in listeners:
             try:

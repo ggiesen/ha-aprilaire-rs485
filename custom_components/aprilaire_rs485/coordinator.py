@@ -209,38 +209,123 @@ class NodeState:
 _KNOWN_RESPONSE_COMMANDS: frozenset[str] = frozenset(
     {
         # Thermostat configuration (manual p.8-14)
-        "EQUIPCONFIG", "EQUIP", "CT",
-        "DIF1", "DIF2", "DIF3", "DIF4",
-        "EXTFAN", "INTEGRAL", "AUTOM", "EQONTIME", "HOFFTIME", "COFFTIME",
-        "ACHGTIME", "DBAND", "RECOV", "HIBP", "LOBP", "OFFSET",
+        "EQUIPCONFIG",
+        "EQUIP",
+        "CT",
+        "DIF1",
+        "DIF2",
+        "DIF3",
+        "DIF4",
+        "EXTFAN",
+        "INTEGRAL",
+        "AUTOM",
+        "EQONTIME",
+        "HOFFTIME",
+        "COFFTIME",
+        "ACHGTIME",
+        "DBAND",
+        "RECOV",
+        "HIBP",
+        "LOBP",
+        "OFFSET",
         # Communication control (p.15-17)
-        "NETAD", "NETST", "BAUD", "ID", "NAME", "CR",
+        "NETAD",
+        "NETST",
+        "BAUD",
+        "ID",
+        "NAME",
+        "CR",
         # Change-of-state report control (p.18-19): the pattern select plus the
         # 19 category toggles. The device echoes each as an ack on every apply.
         "CP",
-        "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10",
-        "C11", "C12", "C13", "C14", "C15", "C16", "C17", "C18", "C19",
+        "C1",
+        "C2",
+        "C3",
+        "C4",
+        "C5",
+        "C6",
+        "C7",
+        "C8",
+        "C9",
+        "C10",
+        "C11",
+        "C12",
+        "C13",
+        "C14",
+        "C15",
+        "C16",
+        "C17",
+        "C18",
+        "C19",
         # Setup (p.20-24)
-        "SCALE", "TIME", "DATE", "PROGFMT", "EVTCFG", "EVTSDAY", "DLS",
-        "BLTLVL", "CONSTBLT", "BLTON",
+        "SCALE",
+        "TIME",
+        "DATE",
+        "PROGFMT",
+        "EVTCFG",
+        "EVTSDAY",
+        "DLS",
+        "BLTLVL",
+        "CONSTBLT",
+        "BLTON",
         # Alarms (p.25-26)
-        "FLTALMP", "FLTALM", "WPALMP", "WPALM", "HUMTYP",
-        "DEHALMP", "DEHALM", "SYSALMP", "SYSALM",
+        "FLTALMP",
+        "FLTALM",
+        "WPALMP",
+        "WPALM",
+        "HUMTYP",
+        "DEHALMP",
+        "DEHALM",
+        "SYSALMP",
+        "SYSALM",
         # Lockout (p.27-30)
-        "FANLK", "MODELK", "NETLK", "UPDNLK", "LKTIME", "LKLIMIT", "PIN",
+        "FANLK",
+        "MODELK",
+        "NETLK",
+        "UPDNLK",
+        "LKTIME",
+        "LKLIMIT",
+        "PIN",
         # Sensors (p.31-35)
-        "TEMP", "T", "HUM", "RSM", "OT", "R", "OH", "BIHUM", "RTS",
+        "TEMP",
+        "T",
+        "HUM",
+        "RSM",
+        "OT",
+        "R",
+        "OH",
+        "BIHUM",
+        "RTS",
         # Temperature control (p.36-42)
-        "MODE", "M", "FAN", "F", "SH", "SC", "S",
+        "MODE",
+        "M",
+        "FAN",
+        "F",
+        "SH",
+        "SC",
+        "S",
         # Humidity control (p.44-45)
-        "SHUM", "SDEH",
+        "SHUM",
+        "SDEH",
         # Program and schedule (p.49-51); the per-event/copy writes are
         # host-only, so only the hold commands appear as responses.
-        "PERMHOLD", "VACHOLD", "TEMPHOLD",
+        "PERMHOLD",
+        "VACHOLD",
+        "TEMPHOLD",
         # Status (p.52-54)
-        "HVAC", "H", "RECOVSTAT", "HOLDSTAT", "HOLD", "PROGUPDT", "ERROR",
+        "HVAC",
+        "H",
+        "RECOVSTAT",
+        "HOLDSTAT",
+        "HOLD",
+        "PROGUPDT",
+        "ERROR",
         # Messaging (p.55)
-        "PMES1", "PMES2", "PMES3", "PMES4", "TMPMES",
+        "PMES1",
+        "PMES2",
+        "PMES3",
+        "PMES4",
+        "TMPMES",
         # Synthetic: bare "SNn" reply to the global connected-nodes query.
         "PRESENT",
     }
@@ -727,9 +812,7 @@ class Aprilaire8800Coordinator:
         if addr is None:
             return
         sent_at = time.monotonic()
-        task = self.hass.async_create_task(
-            self._check_query_response_after_delay(addr, sent_at)
-        )
+        task = self.hass.async_create_task(self._check_query_response_after_delay(addr, sent_at))
         self._pending_query_checks.add(task)
         # Self-prune on completion so the set doesn't grow unboundedly.
         task.add_done_callback(self._pending_query_checks.discard)
@@ -798,9 +881,7 @@ class Aprilaire8800Coordinator:
         except Exception as exc:
             # A buggy check function shouldn't kill verification for other
             # writes. Log and treat as a failure with detail.
-            _LOGGER.exception(
-                "Verification check for %s on node %d raised", command, address
-            )
+            _LOGGER.exception("Verification check for %s on node %d raised", command, address)
             self._record_verification_failure(
                 address=address,
                 command=command,
@@ -944,9 +1025,7 @@ class Aprilaire8800Coordinator:
     async def async_set_mode(self, addr: int, mode: str) -> None:
         """Set the system mode of the given node."""
         await self._async_send(addr, "M", mode)
-        self._register_verification(
-            addr, "M", mode, lambda n: self._check_string_ci(n.mode, mode)
-        )
+        self._register_verification(addr, "M", mode, lambda n: self._check_string_ci(n.mode, mode))
 
     async def async_set_fan(self, addr: int, fan: str) -> None:
         """Set the fan mode of the given node."""
@@ -1084,9 +1163,7 @@ class Aprilaire8800Coordinator:
     def _handle_protocol_error(self, err: BusError) -> None:
         """Fire the appropriate HA event for a protocol-layer error."""
         if err.category == ERROR_PARSE:
-            self.hass.bus.async_fire(
-                EVENT_PARSE_ERROR, {"detail": err.detail, "raw": err.raw}
-            )
+            self.hass.bus.async_fire(EVENT_PARSE_ERROR, {"detail": err.detail, "raw": err.raw})
         elif err.category == ERROR_TRANSPORT:
             self.hass.bus.async_fire(EVENT_TRANSPORT_ERROR, {"detail": err.detail})
         async_dispatcher_send(self.hass, SIGNAL_BUS_ERRORS_UPDATED)
@@ -1114,9 +1191,7 @@ class Aprilaire8800Coordinator:
                 EVENT_QUERY_RECOVERED,
                 {"address": msg.address, "unresponsive_seconds": round(outage, 1)},
             )
-            _LOGGER.info(
-                "Node %d responsive again after %.1fs unresponsive", msg.address, outage
-            )
+            _LOGGER.info("Node %d responsive again after %.1fs unresponsive", msg.address, outage)
 
         cmd = msg.command
         val = msg.value or ""
