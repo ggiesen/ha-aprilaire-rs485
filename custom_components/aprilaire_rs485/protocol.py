@@ -63,7 +63,13 @@ SLOT_WIDTH_MS = {9600: 262.144, 19200: 131.072}
 SUBSLOT_WIDTH_MS = {9600: 65.536, 19200: 32.768}
 
 # How long to wait between reconnection attempts when the transport is down.
+# The delay starts here and doubles after each consecutive failure, up to
+# RECONNECT_BACKOFF_MAX_S, then holds. A transport that is gone for a long
+# time - an unplugged USB adapter, a dead network gateway - would otherwise be
+# retried every few seconds indefinitely, which achieves nothing and buries
+# everything else in the log.
 RECONNECT_BACKOFF_S = 5.0
+RECONNECT_BACKOFF_MAX_S = 300.0
 # How long the tx loop will wait for the transport to come up before dropping
 # a queued command. We drop rather than infinitely queue because old setpoint
 # commands aren't useful - HA will retry from current state.
@@ -165,6 +171,11 @@ class Aprilaire8800Protocol:
         self._conn_lock = threading.Lock()
         self._serial: serial.SerialBase | None = None
         self._connected = threading.Event()
+        # Grows while the transport refuses to open; reset on a successful open.
+        self._reconnect_delay_s = RECONNECT_BACKOFF_S
+        # Last open failure, so a transport that stays down is reported once at
+        # warning level rather than on every retry.
+        self._open_failure: str | None = None
 
         self._tx_queue: Queue[_PendingTx] = Queue()
         self._rx_thread: threading.Thread | None = None
@@ -370,7 +381,21 @@ class Aprilaire8800Protocol:
                     write_timeout=2.0,
                 )
             except Exception as exc:
-                _LOGGER.warning("Failed to open %s: %s", self._url, exc)
+                # A transport that is simply absent fails identically forever.
+                # Report the first occurrence, and each time the reason changes,
+                # at warning level; keep the repeats at debug so an unplugged
+                # adapter doesn't bury the rest of the log.
+                failure = f"{type(exc).__name__}: {exc}"
+                if failure != self._open_failure:
+                    self._open_failure = failure
+                    _LOGGER.warning(
+                        "Failed to open %s: %s (retrying, backing off to %.0fs)",
+                        self._url,
+                        exc,
+                        RECONNECT_BACKOFF_MAX_S,
+                    )
+                else:
+                    _LOGGER.debug("Still cannot open %s: %s", self._url, exc)
                 self.transport_error_count += 1
                 self._emit_error(BusError(category=ERROR_TRANSPORT, detail=f"open failed: {exc}"))
                 return False
@@ -379,6 +404,10 @@ class Aprilaire8800Protocol:
             self._maybe_tune_socket(ser)
             self._serial = ser
             self._connected.set()
+            if self._open_failure is not None:
+                _LOGGER.warning("Transport recovered: %s", self._url)
+                self._open_failure = None
+            self._reconnect_delay_s = RECONNECT_BACKOFF_S
             _LOGGER.info("Transport open: %s", self._url)
             return True
 
@@ -393,6 +422,17 @@ class Aprilaire8800Protocol:
             sock.setsockopt(_socket_mod.SOL_SOCKET, _socket_mod.SO_KEEPALIVE, 1)
         except (OSError, AttributeError) as exc:
             _LOGGER.debug("TCP socket tuning failed (non-fatal): %s", exc)
+
+    def _next_reconnect_delay(self) -> float:
+        """Return how long to wait before the next open attempt.
+
+        Advances the backoff as a side effect, so each consecutive failure
+        waits twice as long as the last up to RECONNECT_BACKOFF_MAX_S. Reset
+        by a successful open in :meth:`_open_transport`.
+        """
+        delay = self._reconnect_delay_s
+        self._reconnect_delay_s = min(delay * 2, RECONNECT_BACKOFF_MAX_S)
+        return delay
 
     def _close_transport(self) -> None:
         with self._conn_lock:
@@ -470,7 +510,7 @@ class Aprilaire8800Protocol:
         buf = bytearray()
         while not self._stop.is_set():
             if not self._connected.is_set() and not self._open_transport():
-                if self._stop.wait(timeout=RECONNECT_BACKOFF_S):
+                if self._stop.wait(timeout=self._next_reconnect_delay()):
                     return
                 continue
 

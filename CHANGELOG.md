@@ -25,6 +25,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   bit time). The wiring notes now describe cabling accurately, and the
   parse-error troubleshooting hint no longer cites mis-termination.
 
+### Fixed
+
+- Reconnection now backs off instead of retrying every five seconds forever.
+  `RECONNECT_BACKOFF_S` was a fixed delay despite its name, so a transport that
+  is simply absent -- an unplugged USB adapter, a dead network gateway -- was
+  reopened twelve times a minute indefinitely, each attempt logging a warning.
+  The delay now doubles per consecutive failure up to five minutes, and the
+  failure is reported once at warning level rather than on every attempt:
+  repeats drop to debug, a change in the failure reason is reported again, and
+  recovery is announced. `transport_error_count` still counts every attempt, so
+  the bus diagnostic sensors are unaffected.
+
 ## [0.2.0] - 2026-06-01
 
 ### Added

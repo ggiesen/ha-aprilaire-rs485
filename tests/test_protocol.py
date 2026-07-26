@@ -11,10 +11,14 @@ external dependencies so they can run anywhere pyserial is available.
 
 from __future__ import annotations
 
+import logging
 import time
 
 import pytest
+import serial
 from protocol import (
+    RECONNECT_BACKOFF_MAX_S,
+    RECONNECT_BACKOFF_S,
     Aprilaire8800Protocol,
     NodeMessage,
     decode_errors,
@@ -410,3 +414,83 @@ def test_parse_model_rejects_non_id() -> None:
     """Values that aren't an ID response return None, not a bogus token."""
     for value in ("", None, "72F", "OK", "SN1 T=72F"):
         assert parse_model(value) is None
+
+
+# ---------- transport reconnect backoff ----------
+
+
+def test_reconnect_delay_doubles_and_caps() -> None:
+    """Each consecutive failure waits twice as long, then holds at the cap."""
+    proto = Aprilaire8800Protocol(url="loop://", baud=9600, max_address=4)
+    delays = [proto._next_reconnect_delay() for _ in range(12)]
+    assert delays[0] == RECONNECT_BACKOFF_S
+    assert delays[1] == RECONNECT_BACKOFF_S * 2
+    assert delays[2] == RECONNECT_BACKOFF_S * 4
+    # Monotonic, never past the cap, and pinned to the cap once reached.
+    assert delays == sorted(delays)
+    assert all(d <= RECONNECT_BACKOFF_MAX_S for d in delays)
+    assert delays[-1] == RECONNECT_BACKOFF_MAX_S
+
+
+def test_open_failure_warns_once_then_debugs(monkeypatch, caplog) -> None:
+    """An absent transport is reported once, not on every retry.
+
+    The whole point of the backoff is that an unplugged adapter stops filling
+    the log. Repeating the same warning every attempt would defeat it.
+    """
+    proto = Aprilaire8800Protocol(url="loop://", baud=9600, max_address=4)
+
+    def _boom(*_args, **_kwargs):
+        raise OSError(2, "No such file or directory")
+
+    monkeypatch.setattr(serial, "serial_for_url", _boom)
+
+    with caplog.at_level(logging.DEBUG):
+        for _ in range(5):
+            assert proto._open_transport() is False
+
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    # Every attempt still counts as a transport error, even when not logged.
+    assert proto.transport_error_count == 5
+
+
+def test_open_failure_warns_again_when_reason_changes(monkeypatch, caplog) -> None:
+    """A different failure is newsworthy even if an earlier one was reported."""
+    proto = Aprilaire8800Protocol(url="loop://", baud=9600, max_address=4)
+    failures = [
+        OSError(2, "No such file or directory"),
+        OSError(2, "No such file or directory"),
+        OSError(13, "Permission denied"),
+    ]
+
+    def _boom(*_args, **_kwargs):
+        raise failures.pop(0)
+
+    monkeypatch.setattr(serial, "serial_for_url", _boom)
+
+    with caplog.at_level(logging.DEBUG):
+        for _ in range(3):
+            assert proto._open_transport() is False
+
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 2
+
+
+def test_successful_open_resets_backoff_and_reports_recovery(caplog) -> None:
+    """Coming back up resets the delay and says so."""
+    proto = Aprilaire8800Protocol(url="loop://", baud=9600, max_address=4)
+    # Pretend we have been failing for a while.
+    proto._open_failure = "OSError: gone"
+    proto._next_reconnect_delay()
+    proto._next_reconnect_delay()
+    assert proto._reconnect_delay_s > RECONNECT_BACKOFF_S
+
+    try:
+        with caplog.at_level(logging.DEBUG):
+            assert proto._open_transport() is True
+        assert proto._reconnect_delay_s == RECONNECT_BACKOFF_S
+        assert proto._open_failure is None
+        assert any("recovered" in r.message.lower() for r in caplog.records)
+    finally:
+        proto._close_transport()
