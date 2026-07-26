@@ -21,7 +21,11 @@ packages = []
 
 [project]
 name = "aprilaire_rs485"
-version = "0.1.0"
+# Keep in step with custom_components/aprilaire_rs485/manifest.json, which is
+# the version Home Assistant and HACS actually read. Nothing consumes this one
+# (the project is not published to PyPI), so it drifted from 0.1.0 to 0.2.0
+# unnoticed; bump both together at release time.
+version = "0.3.0"
 description = "Home Assistant custom integration for the Aprilaire Model 8800 RS-485 communicating thermostat."
 readme = "README.md"
 license = { text = "MPL-2.0" }
